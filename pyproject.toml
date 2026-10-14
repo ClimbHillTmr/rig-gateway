@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rig-gateway"
+version = "0.1.0"
+description = "Self-hosted MCP server for a remote Windows machine over a tailnet - a drop-in replacement for vendor remote-desktop MCP servers"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["mcp", "remote", "windows", "automation", "tailscale", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Systems Administration",
+]
+
+# Core stays light: the read-only tier needs nothing but psutil.
+dependencies = ["psutil>=5.9"]
+
+[project.optional-dependencies]
+screen = ["pillow>=10.0", "pyautogui>=0.9.54"]
+mcp = ["mcp>=1.0"]
+all = ["pillow>=10.0", "pyautogui>=0.9.54", "mcp>=1.0"]
+
+[project.scripts]
+rig-gateway = "rig_gateway.server:main"
+
+[tool.setuptools.packages.find]
+include = ["rig_gateway*"]
