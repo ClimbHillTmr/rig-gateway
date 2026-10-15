@@ -375,9 +375,34 @@ def main() -> None:
     if args.transport == "stdio":
         mcp.run(transport="stdio")
     else:
-        mcp.settings.host = args.host
-        mcp.settings.port = args.port
-        mcp.run(transport="streamable-http")
+        # FastMCP's API for binding host/port differs across versions, and the
+        # Settings model rejects unknown fields with ValueError. Try the
+        # documented run() arguments first, then fall back to setting the
+        # attributes directly, and report which path was taken -- silently
+        # guessing is how a wrong assumption survives to the next user.
+        import inspect
+
+        run_params = inspect.signature(mcp.run).parameters
+        accepts_kwargs = "host" in run_params and "port" in run_params
+        if accepts_kwargs:
+            mcp.run(transport="streamable-http", host=args.host, port=args.port)
+        else:
+            # If the attributes cannot be set, do NOT fall through to run():
+            # it would silently bind 127.0.0.1 instead of the requested address,
+            # which looks like a network fault and is not. Fail loudly instead.
+            failures = []
+            for attr, value in (("host", args.host), ("port", args.port)):
+                try:
+                    setattr(mcp.settings, attr, value)
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(f"settings.{attr} = {value!r}: {exc}")
+            if failures:
+                raise SystemExit(
+                    "Cannot bind the requested address with this FastMCP version:\n  "
+                    + "\n  ".join(failures)
+                    + "\nPass --host/--port to run(), or pin a FastMCP version that "
+                      "supports them.")
+            mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":
