@@ -57,8 +57,21 @@ public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
 # --- environment -------------------------------------------------------------
 $py = Join-Path $Root '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $py -PathType Leaf)) { throw "venv python not found: $py" }
-& $py -I -c "import sys; assert struct.calcsize('P')==8" 2>$null
+& $py -c "import sys; assert struct.calcsize('P')==8, 'need 64-bit'"
 if ($LASTEXITCODE -ne 0) { throw 'Interpreter is not 64-bit.' }
+
+# The package must be INSTALLED, not just present on disk. Running
+# `python -I -m rig_gateway.server` fails with ModuleNotFoundError because -I
+# removes the current directory from sys.path -- so an unpacked-but-uninstalled
+# tree is invisible. Install it, then run without -I.
+& $py -c "import rig_gateway, sys; sys.exit(0)" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'rig_gateway not importable; installing this tree into the venv...'
+    & $py -m pip install --quiet --disable-pip-version-check --no-deps $Root
+    if ($LASTEXITCODE -ne 0) { throw 'pip install of rig_gateway failed.' }
+    & $py -c "import rig_gateway; print('installed from', rig_gateway.__file__)"
+    if ($LASTEXITCODE -ne 0) { throw 'Still not importable after install.' }
+}
 
 if (-not $SandboxRoot) { $SandboxRoot = (Join-Path $Root 'sandbox') }
 if (-not (Test-Path -LiteralPath $SandboxRoot)) { New-Item -ItemType Directory -Path $SandboxRoot | Out-Null }
@@ -75,4 +88,7 @@ Write-Host 'tiers: 1 only (read-only). Stop with Ctrl+C.'
 # Do not add a "client allowed" line here without also adding the code that enforces it.
 
 # --- launch: inherited handles, no pipe (fix #1) -----------------------------
-& $py -I -m rig_gateway.server --transport streamable-http --host $BindIp --port $Port
+# No -I here: it strips the CWD from sys.path, which would hide an installed
+# package only if it were not installed -- and we install it above. The venv
+# itself is the isolation boundary, so -I would add nothing and break the import.
+& $py -m rig_gateway.server --transport streamable-http --host $BindIp --port $Port
