@@ -270,7 +270,10 @@ def main() -> None:
         args.call_tool = args.call_tool or "GetSystemInfo"
         args.marker_tool = args.marker_tool or "FileRead"
 
-    key = os.environ.get("WINREMOTE_RIG_TOKEN") or os.environ.get("RIG_TOKEN") or ""
+    # RIG_TOKEN is ours. WINREMOTE_RIG_TOKEN is borrowed from winremote-mcp
+    # (dddabtc/winremote-mcp, MIT) and is kept only so the verifier can still drive a
+    # server you have not replaced yet; it will be dropped once nothing needs it.
+    key = os.environ.get("RIG_TOKEN") or os.environ.get("WINREMOTE_RIG_TOKEN") or ""
     if args.auth == "none":
         if key:
             print("[note] --auth none but a token is set; it will still be sent.")

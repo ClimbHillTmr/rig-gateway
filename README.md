@@ -156,6 +156,32 @@ Use a mesh VPN (Tailscale, Headscale, Netbird) so no inbound ports are opened on
 target's router. The tailnet encrypts the transport; a relayed connection is slower but
 equivalent. See `skills/rig-remote-ops/SKILL.md` for the full sequence.
 
+## Provenance
+
+Built behind the inkjet-rig work on `DESKTOP-AE2K3NN`, to replace the AweSun MCP that was
+the only usable channel to that machine. What it stands on, and what each debt actually is:
+
+- **`dddabtc/winremote-mcp`** (MIT) — the reference this project answers. We use no code
+  from it; it is the 40-tool FastMCP server we were using and set out to replace, and the
+  comparison table above is drawn against it. It in turn credits
+  [`CursorTouch/Windows-MCP`](https://github.com/CursorTouch/Windows-MCP). **The one piece
+  still on loan is a name:** the verifier's `WINREMOTE_RIG_TOKEN` and the vendor-profile
+  tools it checks (`GetSystemInfo`/`FileRead`) are that project's vocabulary, kept so the
+  verifier can still test a server you have not replaced yet. `RIG_TOKEN` and the
+  `rig-gateway` profile are ours.
+- **The `mcp` SDK** (MIT) — the transport and protocol this server implements. Read
+  dependency, not derived code.
+- **[`CursorTouch/Windows-MCP`](https://github.com/CursorTouch/Windows-MCP)** — transitive,
+  credited here only because the chain would be dishonest to truncate at one link. We
+  depend on it in no form.
+- **`tailscale/tailscale`** (BSD-3-Clause) — carries the transport in deployment. Not a
+  code dependency; the `tailscale` command in `SKILL.md` is the external CLI.
+
+The skill in `skills/rig-remote-ops/` was reworked from the operator notes and the
+`verify_endpoint.py` verifier of a first attempt, kept briefly at
+`ClimbHillTmr/remote-win-mcp` and since archived. That repository holds nothing this one
+does not.
+
 ## License
 
 MIT
