@@ -33,8 +33,15 @@ diagnostic channel that cannot read the thing it is diagnosing is useless.
 - The check is **component-wise containment**. `C:\rootX` is outside `C:\root` even though
   it starts with those characters. Never "simplify" this to a `startswith` test.
 - An unset `RIG_SANDBOX_ROOT` refuses every write. That is fail-closed by design.
-- Existing files are not overwritten without `RIG_ALLOW_OVERWRITE=1`.
+- Existing files need **two** keys: `overwrite=True` from the caller and
+  `RIG_ALLOW_OVERWRITE=1` on the server.
 - Directory deletion needs an explicit `recursive=True`.
+- **Both ends of a transfer are on the host.** An MCP tool cannot reach the client's disk,
+  so `transfer_out`/`transfer_in`'s "local" side is the *server's* filesystem — a write,
+  and confined like any other. Reading stays unrestricted; copying is a write at one end.
+- The root is read from the environment **at call time**, not cached at import. A cached
+  copy is a second source of truth: the code enforcing the bound and `host_status`
+  reporting it could disagree, and the report would describe a policy not in force.
 
 Report `host_status().policy` rather than claiming safety in prose — it states the live
 boundary instead of restating the design.
@@ -55,9 +62,9 @@ Work up this ladder; each step proves something the previous one did not.
 |---|---|---|
 | 1 | `tailscale ping <host>` | a route exists (relay or direct — relay is fine) |
 | 2 | TCP connect | a socket is listening. **Not** that HTTP works |
-| 3 | `GET /health` returns a status | the application is answering |
-| 4 | unauthenticated `POST /mcp` → `401`/`403` | auth is enforced |
-| 5 | authenticated `initialize` → `200` | the key is right; handshake works |
+| 3 | unauthenticated `POST /mcp` answers | the application is answering |
+| 4 | auth posture matches what you asked for | `--auth none`: honestly none. `--auth required`: `401`/`403` |
+| 5 | `initialize` handshake → `200` | the transport and protocol negotiate |
 | 6 | `tools/list` equals the allowlist **exactly** | nothing extra leaked in |
 | 7 | one real `tools/call` returns content | tools execute, not merely list |
 | 8 | read a marker file you placed | you reached the intended host and path |
@@ -65,9 +72,17 @@ Work up this ladder; each step proves something the previous one did not.
 `scripts/verify_endpoint.py` runs all eight and exits non-zero at the first unproven step:
 
 ```bash
-python scripts/verify_endpoint.py --host 100.64.0.1 --port 8099 \
+python scripts/verify_endpoint.py --host 100.64.0.1 --port 8099 --auth none \
     --expect-marker-file 'C:\approved\root\channel-marker.txt'
 ```
+
+**Do not demand `401` from a server that has no auth.** rig-gateway ships without any —
+that is its documented default — so a hard-coded `401` expectation fails the correct
+server, and a verifier that always reports red is as useless as one that always reports
+green. `--auth none` accepts that posture *and prints that auth was not verified*, so the
+result is never overclaimed. Use `--auth required` once you have put a reverse proxy or
+mTLS in front. `--profile vendor` keeps the older `GetSystemInfo`/`FileRead` naming for a
+server you have not replaced yet.
 
 ### Three measurement traps
 

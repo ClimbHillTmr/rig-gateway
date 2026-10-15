@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import json
 import os
 import sys
 import time
@@ -33,19 +32,59 @@ try:
 except ImportError:  # mcp 1.x
     from mcp.server.mcpserver import MCPServer as FastMCP  # type: ignore
 
-from .pathpolicy import PathDenied, describe_policy, resolve_read_path, resolve_write_path
+from .pathpolicy import (
+    PathDenied,
+    active_root,
+    describe_policy,
+    resolve_read_path,
+    resolve_write_path,
+)
 
 TIER1 = {"host_status", "list_processes", "system_info", "list_directory", "read_file"}
 TIER2 = TIER1 | {"capture_screen", "write_file", "delete_path", "make_directory", "move_path",
                  "transfer_out", "transfer_in"}
 TIER3 = TIER2 | {"run_command", "type_text", "press_keys"}
 
-SANDBOX_ROOT = os.environ.get("RIG_SANDBOX_ROOT", "").strip()
 mcp = FastMCP("rig-gateway")
 
 
-class Denied(PermissionError):
-    """A request was refused by policy. Reported as a tool error, not a crash."""
+def _tool_error_base() -> type[BaseException]:
+    """The SDK's anticipated-failure exception, if this version has one.
+
+    The MCP SDK deliberately scrubs the text of a *crash*: the client sees only
+    "Error executing tool <name>". Only the SDK's own ToolError keeps its message.
+    A policy refusal is the most important thing an operator can be told, so
+    ``Denied`` inherits from whichever class preserves it -- otherwise "refused
+    by the sandbox" is indistinguishable from "the server is broken", which is
+    the confusion this project exists to remove.
+    """
+    for module, name in (
+        ("mcp.server.mcpserver.exceptions", "ToolError"),   # mcp 2.x
+        ("mcp.server.fastmcp.exceptions", "ToolError"),     # mcp 1.x
+        ("mcp.server.lowlevel.server", "ToolError"),
+    ):
+        try:
+            return getattr(__import__(module, fromlist=[name]), name)
+        except (ImportError, AttributeError):
+            continue
+    return PermissionError  # no SDK present; still a clear error locally
+
+
+_ToolError = _tool_error_base()
+
+# When no SDK is present the base is already PermissionError, and naming it
+# twice is a TypeError at class-creation time -- which would take out the whole
+# module, not just the missing-SDK path. Build the bases without the duplicate.
+_DeniedBases = (_ToolError,) if _ToolError is PermissionError else (_ToolError, PermissionError)
+
+
+class Denied(*_DeniedBases):
+    """A request was refused by policy, with the reason kept in the message.
+
+    Inherits the SDK's anticipated-failure class so the text survives to the
+    client, and PermissionError so callers that reason in stdlib terms still
+    catch it.
+    """
 
 
 def _require_tier3(what: str) -> None:
@@ -78,14 +117,31 @@ def host_status() -> dict:
     import urllib.error
     import urllib.request
 
-    result: dict[str, Any] = {"policy": describe_policy(SANDBOX_ROOT)}
+    from urllib.parse import urlsplit
+
+    result: dict[str, Any] = {"policy": describe_policy()}
     target = os.environ.get("RIG_SELF_CHECK_URL", "").strip()
     if not target:
         result["note"] = "set RIG_SELF_CHECK_URL to enable the liveness probe"
         return result
 
-    host, _, port = target.split("//", 1)[-1].partition(":")
-    port = int(port or 80)
+    # Parse with urlsplit, not partition(":"). The documented value is the MCP
+    # endpoint ("http://host:8099/mcp"), and a naive split turns the path into
+    # part of the port -- int("8099/mcp") raises ValueError, so the one tool
+    # whose whole job is to report on connectivity crashed on its own example.
+    # A bare "host:port" is accepted too; urlsplit reads it as scheme="host".
+    try:
+        parts = urlsplit(target if "://" in target else "http://" + target)
+        host = parts.hostname or ""
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        if not host:
+            raise ValueError("no host component")
+    except ValueError as exc:
+        result["parse_error"] = f"RIG_SELF_CHECK_URL={target!r} is not a usable URL: {exc}"
+        result["tcp_open"] = False
+        result["http_proves"] = "NOTHING -- the probe URL could not be parsed"
+        return result
+
     tcp = False
     try:
         with socket.create_connection((host, port), timeout=5):
@@ -126,7 +182,7 @@ def system_info() -> dict:
         "memory_percent": psutil.virtual_memory().percent,
         "disk_percent": psutil.disk_usage("C:\\").percent if platform.system() == "Windows" else None,
         "uptime_seconds": int(time.time() - boot),
-        "sandbox_root": SANDBOX_ROOT or "(unset)",
+        "sandbox_root": active_root() or "(unset)",
     }
 
 
@@ -204,10 +260,26 @@ def read_file(path: str, encoding: str = "utf-8", max_chars: int = 100_000) -> d
 def capture_screen(quality: int = 70, monitor: int = 1) -> dict:
     """Screenshot the host desktop. Returns base64 JPEG plus the window list.
 
-    Requires an unlocked, active console session; a locked or disconnected session
-    yields a black frame, which is a session problem rather than a capture bug.
+    **Captures the active display only.** ``monitor`` is validated and reported
+    but not yet honoured: multi-monitor capture is unimplemented, so this
+    refuses anything but monitor 1 rather than silently returning the primary
+    display while appearing to have switched. Pretending to support a parameter
+    is how a gap becomes a wrong answer.
+
+    Requires an unlocked, active console session; a locked or disconnected
+    session yields a black frame, which is a session problem, not a capture bug.
     """
-    import pyautogui
+    if monitor != 1:
+        raise Denied(
+            f"monitor={monitor} was requested but only the active display is captured. "
+            "Multi-monitor capture is not implemented; pass monitor=1 or ask for it "
+            "to be added rather than receiving the wrong monitor's frame silently.")
+    try:
+        import pyautogui
+    except ImportError as exc:
+        raise Denied(
+            "capture_screen needs the 'screen' extra: pip install 'rig-gateway[screen]' "
+            f"(missing: {exc.name}).") from exc
 
     image = pyautogui.screenshot()
     import io
@@ -215,23 +287,35 @@ def capture_screen(quality: int = 70, monitor: int = 1) -> dict:
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=quality)
     return {"format": "jpeg", "quality": quality, "monitor": monitor,
+            "monitors_supported": 1,
             "size": list(image.size), "image_base64": base64.b64encode(buf.getvalue()).decode()}
 
 
 @mcp.tool()
-def write_file(path: str, content: str, encoding: str = "utf-8") -> dict:
+def write_file(path: str, content: str, encoding: str = "utf-8", overwrite: bool = False) -> dict:
     """Write a text file. **Confined to the sandbox root.**
 
-    Refuses to overwrite unless ``overwrite=True``, and never truncates a file
-    outside the sandbox.
+    An existing file is refused unless BOTH ``overwrite=True`` is passed here
+    and the server was started with ``RIG_ALLOW_OVERWRITE=1``. The two keys are
+    deliberate: the caller says "yes, this specific file", the operator says
+    "yes, overwriting is allowed on this machine at all".
+
+    ``overwrite`` must be a real parameter -- the docstring used to tell callers
+    to pass it while the signature did not accept it, so every client that
+    followed the documentation got a TypeError instead of a write.
     """
     resolved = _write(path)
     from pathlib import Path
 
     p = Path(resolved)
     existed = p.exists()
-    if existed and os.environ.get("RIG_ALLOW_OVERWRITE", "").lower() not in ("1", "true", "yes"):
-        raise Denied(f"{resolved} already exists. Pass overwrite explicitly if that is intended.")
+    if existed:
+        operator_ok = os.environ.get("RIG_ALLOW_OVERWRITE", "").lower() in ("1", "true", "yes")
+        if not (overwrite and operator_ok):
+            raise Denied(
+                f"{resolved} already exists. Pass overwrite=True AND start the server "
+                f"with RIG_ALLOW_OVERWRITE=1 to replace it "
+                f"(overwrite={overwrite}, RIG_ALLOW_OVERWRITE={'set' if operator_ok else 'unset'}).")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding=encoding)
     return {"path": resolved, "bytes": len(content.encode(encoding)), "overwrote": existed}
@@ -283,23 +367,34 @@ def delete_path(path: str, recursive: bool = False) -> dict:
 
 @mcp.tool()
 def transfer_out(remote_path: str, local_path: str) -> dict:
-    """Download a file from the host. Reads are unrestricted; writes are local."""
+    """Copy a file out of the host, into the sandbox. **Destination confined.**
+
+    Both endpoints live on the host: an MCP tool has no access to the client's
+    filesystem, so "local" here means the server's own disk. The destination is
+    therefore a write like any other and is confined to the sandbox root --
+    reading is unrestricted, writing is not, and a copy is a write at one end.
+    """
     src = resolve_read_path(remote_path)
+    dst = _write(local_path)
     import shutil
 
-    shutil.copy2(src, local_path)
-    return {"from": src, "to": os.path.abspath(local_path),
-            "bytes": os.path.getsize(local_path)}
+    shutil.copy2(src, dst)
+    return {"from": src, "to": dst, "bytes": os.path.getsize(dst)}
 
 
 @mcp.tool()
 def transfer_in(local_path: str, remote_path: str) -> dict:
-    """Upload a file to the host. **Destination confined to the sandbox root.**"""
+    """Copy a file into the sandbox from elsewhere on the host.
+
+    Same rule as transfer_out, mirrored: the read side is unrestricted, the
+    write side is confined to the sandbox root.
+    """
+    src = resolve_read_path(local_path)
     dst = _write(remote_path)
     import shutil
 
-    shutil.copy2(local_path, dst)
-    return {"from": os.path.abspath(local_path), "to": dst, "bytes": os.path.getsize(dst)}
+    shutil.copy2(src, dst)
+    return {"from": src, "to": dst, "bytes": os.path.getsize(dst)}
 
 
 # --------------------------------------------------------------------------- tier 3
@@ -341,7 +436,12 @@ def press_keys(keys: str) -> dict:
 
 
 def build(enable_tier2: bool, enable_tier3: bool) -> FastMCP:
-    """Remove the tools the operator did not ask for, so the client cannot call them."""
+    """Remove the tools the operator did not ask for, so the client cannot call them.
+
+    Removal is one-way: a tool dropped here is not restored by a later call.
+    All registrations happen at import, so build() must be called exactly once,
+    before run(). Calling it twice with different tiers cannot resurrect a tool.
+    """
     enabled = set(TIER1)
     if enable_tier2:
         enabled |= TIER2
@@ -353,6 +453,31 @@ def build(enable_tier2: bool, enable_tier3: bool) -> FastMCP:
         for name in [n for n in tools if n not in enabled]:
             tools.pop(name, None)
     return mcp
+
+
+def resolve_http_binding(run_callable: Any) -> str:
+    """Decide how to pass host/port to this FastMCP's run(). Pure; unit-tested.
+
+    Returns "kwargs" if run() accepts host/port -- directly, or (the common case)
+    via ``**kwargs``, which is how mcp 2.x MCPServer.run is declared:
+
+        run(self, transport='stdio', **kwargs)
+
+    A literal ``"host" in params`` test misses that and, worse, is *wrong in the
+    safe-looking direction*: it falls through to the Settings path, which raises
+    on every version whose Settings has no host field, and the server never binds
+    at all. That exact bug shipped once -- see tests/test_server_binding.py.
+
+    Returns "settings" only for a version that genuinely takes neither.
+    """
+    import inspect
+
+    params = inspect.signature(run_callable).parameters
+    if "host" in params and "port" in params:
+        return "kwargs"
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return "kwargs"
+    return "settings"
 
 
 def main() -> None:
@@ -367,42 +492,41 @@ def main() -> None:
                     help="command execution and keystroke injection (needs RIG_ALLOW_TIER3=1 too)")
     args = ap.parse_args()
 
-    if not SANDBOX_ROOT:
+    if not active_root():
         print("WARNING: RIG_SANDBOX_ROOT is unset. Reads work; every write will be refused.",
               file=sys.stderr)
 
     build(args.enable_tier2, args.enable_tier3)
     if args.transport == "stdio":
         mcp.run(transport="stdio")
-    else:
-        # FastMCP's API for binding host/port differs across versions, and the
-        # Settings model rejects unknown fields with ValueError. Try the
-        # documented run() arguments first, then fall back to setting the
-        # attributes directly, and report which path was taken -- silently
-        # guessing is how a wrong assumption survives to the next user.
-        import inspect
+        return
 
-        run_params = inspect.signature(mcp.run).parameters
-        accepts_kwargs = "host" in run_params and "port" in run_params
-        if accepts_kwargs:
-            mcp.run(transport="streamable-http", host=args.host, port=args.port)
-        else:
-            # If the attributes cannot be set, do NOT fall through to run():
-            # it would silently bind 127.0.0.1 instead of the requested address,
-            # which looks like a network fault and is not. Fail loudly instead.
-            failures = []
-            for attr, value in (("host", args.host), ("port", args.port)):
-                try:
-                    setattr(mcp.settings, attr, value)
-                except Exception as exc:  # noqa: BLE001
-                    failures.append(f"settings.{attr} = {value!r}: {exc}")
-            if failures:
-                raise SystemExit(
-                    "Cannot bind the requested address with this FastMCP version:\n  "
-                    + "\n  ".join(failures)
-                    + "\nPass --host/--port to run(), or pin a FastMCP version that "
-                      "supports them.")
-            mcp.run(transport="streamable-http")
+    # FastMCP's API for binding host/port differs across versions. Ask the real
+    # signature which form this version takes, and say which path was taken --
+    # silently guessing is how a wrong assumption survives to the next user.
+    how = resolve_http_binding(mcp.run)
+    print(f"binding {args.host}:{args.port} via run({how})", file=sys.stderr)
+    if how == "kwargs":
+        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+        return
+
+    # Last resort for a version that accepts neither: set the Settings fields.
+    # If that fails, do NOT fall through to run(): it would silently bind
+    # 127.0.0.1 instead of the requested address, which looks like a network
+    # fault and is not. Fail loudly instead.
+    failures = []
+    for attr, value in (("host", args.host), ("port", args.port)):
+        try:
+            setattr(mcp.settings, attr, value)
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"settings.{attr} = {value!r}: {exc}")
+    if failures:
+        raise SystemExit(
+            "Cannot bind the requested address with this FastMCP version:\n  "
+            + "\n  ".join(failures)
+            + "\nPass --host/--port to run(), or pin a FastMCP version that "
+              "supports them.")
+    mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":

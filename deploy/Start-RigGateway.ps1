@@ -77,6 +77,22 @@ if (-not $SandboxRoot) { $SandboxRoot = (Join-Path $Root 'sandbox') }
 if (-not (Test-Path -LiteralPath $SandboxRoot)) { New-Item -ItemType Directory -Path $SandboxRoot | Out-Null }
 $env:RIG_SANDBOX_ROOT = $SandboxRoot
 
+# --- pre-flight: prove the bind decision BEFORE serving ----------------------
+# A server that exits on a bad bind looks, from the client, exactly like a
+# network fault. Catch it here, where the operator can see it, rather than
+# letting them debug a tailnet that was never the problem.
+& $py -c @"
+import sys
+from rig_gateway.server import resolve_http_binding, mcp
+how = resolve_http_binding(mcp.run)
+print('bind decision: run(%s)' % how)
+sys.exit(0 if how == 'kwargs' else 2)
+"@
+if ($LASTEXITCODE -ne 0) {
+    throw ('This rig_gateway cannot bind host/port through run() -- it would fall back to '
+         + 'Settings and exit without listening. Redeploy from current source.')
+}
+
 Write-Host "rig-gateway starting on http://${BindIp}:${Port}/mcp"
 Write-Host "sandbox root : $SandboxRoot  (writes confined here)"
 Write-Host 'tiers: 1 only (read-only). Stop with Ctrl+C.'

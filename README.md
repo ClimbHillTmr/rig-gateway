@@ -101,7 +101,12 @@ rather than becoming a silent default.
 - **Every mutation is confined to `RIG_SANDBOX_ROOT`**, checked *component-wise*.
   `C:\rootX` is outside `C:\root`, even though it starts with those characters — a prefix
   test is not containment, and that distinction is enforced by tests.
-- **No file is overwritten without an explicit opt-in** (`RIG_ALLOW_OVERWRITE=1`).
+- **Both ends of a transfer are on the host.** An MCP tool cannot see the client's disk,
+  so `transfer_out`/`transfer_in`'s "local" side is the server's own filesystem. The read
+  end stays unrestricted; the write end is confined like every other write. (It was not,
+  once — a copy could land anywhere the process could write.)
+- **Overwriting takes two independent keys**: `overwrite=True` from the caller *and*
+  `RIG_ALLOW_OVERWRITE=1` on the server.
 - **Directory deletion requires an explicit `recursive=True`**, so a stray call cannot take
   out a non-empty tree by accident.
 - **Tier 3 is refused by default**, twice over: the flag and the environment variable.
@@ -118,13 +123,32 @@ handshake, exact tool inventory, a real tool call, and an identity read-back —
 the first unproven step.
 
 ```bash
-python verify_endpoint.py --host 100.64.0.1 --port 8099 \
+python verify_endpoint.py --host 100.64.0.1 --port 8099 --auth none \
     --expect-marker-file 'C:\approved\directory\channel-marker.txt'
 ```
+
+`--auth none` is not a shortcut — it is the honest statement that this server ships
+without authentication, and the verifier says so on exit rather than reporting a green
+run as if auth had been checked. If you have put auth in front of it, pass
+`--auth required` and the check becomes a real one. `--profile vendor` covers the older
+`GetSystemInfo`/`FileRead` naming if you are verifying a server you have not replaced yet.
 
 The tests are negative on purpose. `test_starved_listener_is_rejected` reproduces a socket
 that accepts and never answers, and asserts the verifier rejects it — without that
 assertion, a regression would pass the happy path while the channel was dead.
+
+### What has actually been run
+
+Verified end to end on a real host over `streamable-http` (mcp 2.1.1, Python 3.14): the
+eight checks pass against the live server, `tools/list` returns exactly the enabled tier,
+a real `system_info` call returns live data, and a marker file reads back from an intended
+path. The sandbox was confirmed by attempting the escapes — `transfer_out` to the desktop
+and `write_file` to `C:\Windows` are both refused **with the reason text**, while the same
+`transfer_out` into the sandbox root succeeds.
+
+That last detail is a fix, not a detail: a refusal used to reach the client as
+`Error executing tool write_file` with the policy text scrubbed, which reads as a broken
+server rather than a working sandbox.
 
 ## Deploying over the internet
 

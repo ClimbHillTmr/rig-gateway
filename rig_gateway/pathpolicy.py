@@ -21,7 +21,24 @@ import ntpath
 import os
 import re
 
-DEFAULT_ROOT = os.environ.get("RIG_SANDBOX_ROOT", "").strip()
+ENV_VAR = "RIG_SANDBOX_ROOT"
+
+
+def active_root() -> str:
+    """The sandbox root in force *now*.
+
+    Read from the environment on every call rather than cached at import. A
+    cached copy is a second source of truth: the module that enforces the bound
+    and the tool that reports it could then disagree, and `host_status` would be
+    describing a policy that is not the one being applied. Resolution is
+    cheap (a dict lookup) and the alternative is a silent divergence.
+    """
+    return os.environ.get(ENV_VAR, "").strip()
+
+
+# Kept for callers that imported the old constant. Do not use in new code;
+# prefer active_root(), which cannot go stale.
+DEFAULT_ROOT = active_root()
 
 # Drive-relative and UNC forms bypass naive prefix checks; reject them outright.
 # Match a bare drive letter with nothing after it (C:, C:file.txt) but NOT a
@@ -66,12 +83,14 @@ def is_contained(candidate: str, root: str) -> bool:
     return not rel.startswith("..") and not ntpath.isabs(rel)
 
 
-def resolve_write_path(path: str, root: str = DEFAULT_ROOT, *, must_exist: bool = False) -> str:
+def resolve_write_path(path: str, root: str | None = None, *, must_exist: bool = False) -> str:
     """Return the absolute path for a write, or raise PathDenied.
 
     Call this immediately before *every* mutating operation. Do not cache the
-    result across calls -- that is how TOCTOU bugs get in.
+    result across calls -- that is how TOCTOU bugs get in. ``root`` defaults to
+    the live environment value; pass it explicitly only in tests.
     """
+    root = active_root() if root is None else root
     if not root:
         raise PathDenied(
             "No sandbox root configured. Set RIG_SANDBOX_ROOT to the single "
@@ -95,8 +114,9 @@ def resolve_read_path(path: str) -> str:
     return _norm(ntpath.abspath(_norm(path)))
 
 
-def describe_policy(root: str = DEFAULT_ROOT) -> dict:
+def describe_policy(root: str | None = None) -> dict:
     """Report the live policy. Callers show this instead of asserting safety."""
+    root = active_root() if root is None else root
     return {
         "sandbox_root": root or "(unset -- all writes will be refused)",
         "writes_confined_to_root": bool(root),
