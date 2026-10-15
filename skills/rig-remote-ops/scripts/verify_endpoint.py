@@ -159,6 +159,32 @@ class Mcp:
 
 
 def http_status(host: str, port: int, path: str, timeout: float, auth: dict | None) -> int | None:
+    """Unauthenticated liveness probe. Returns the HTTP status, or None.
+
+    Kept for the simple "did it answer" case; see probe_liveness() for a version
+    that can tell the *reasons* a probe fails apart.
+    """
+    return probe_liveness(host, port, path, timeout, auth)[0]
+
+
+def probe_liveness(host: str, port: int, path: str, timeout: float,
+                   auth: dict | None) -> tuple[int | None, str]:
+    """Return (status, how) where how is 'answered', 'closed' or 'timeout'.
+
+    Three failures that look alike and are not:
+
+      'timeout'  the server accepted and said nothing for `timeout` seconds --
+                 the output-starvation signature, or a wedged process.
+      'closed'   the server accepted and closed WITHOUT sending a byte. That is
+                 an active refusal, not a stall: it is what a credential check
+                 that drops the connection looks like, and it is *also* what a
+                 zero-byte starvation stall produces once the peer gives up.
+      'refused'  nothing listening at all (OSError before any response).
+
+    Collapsing these into "no response" sends the operator to debug the wrong
+    layer -- a rejected credential reads as a network fault. Distinguishing them
+    is the whole point of making this a separate function.
+    """
     conn = http.client.HTTPConnection(host, port, timeout=timeout)
     try:
         headers = dict(auth or {})
@@ -169,15 +195,41 @@ def http_status(host: str, port: int, path: str, timeout: float, auth: dict | No
                                  "params": {"protocolVersion": "2025-03-26", "capabilities": {},
                                             "clientInfo": {"name": "probe", "version": "1"}}}),
                      headers)
-        return conn.getresponse().status
-    except OSError:
-        return None
+        return conn.getresponse().status, "answered"
+    except socket.timeout:
+        return None, "timeout"
+    except (http.client.RemoteDisconnected, http.client.BadStatusLine):
+        # http.client noticed the peer hang up mid-exchange.
+        return None, "closed"
+    except ConnectionRefusedError:
+        # The connect itself was refused: nothing listening. A different fact
+        # from a server that accepted and then dropped us.
+        return None, "refused"
+    except OSError as exc:
+        # Windows does NOT raise one exception here, and which one you get
+        # depends on whether a warm connection already exists:
+        #
+        #   1st probe : ConnectionResetError    errno 10054 (WSAECONNRESET)
+        #   2nd+ probe: ConnectionAbortedError  errno 10053 (WSAECONNABORTED)
+        #
+        # Both mean "connected, then the peer dropped us without answering".
+        # Catching only RemoteDisconnected -- the POSIX-flavoured type -- missed
+        # both, so a deliberate refusal was reported as "connection refused" and
+        # sent the operator to debug the network. Match the reset/abort family
+        # explicitly, and treat any other socket error as unreachable.
+        dropped = getattr(exc, "errno", None) in _DROPPED_ERRNOS or isinstance(
+            exc, (ConnectionResetError, ConnectionAbortedError))
+        return None, "closed" if dropped else "refused"
     finally:
         conn.close()
 
 
 RIG_GATEWAY_TOOLS = "host_status,system_info,list_processes,list_directory,read_file"
 RIG_GATEWAY_READ_TOOL = "read_file"
+
+# "Connected, then dropped without a byte." 10054 is WSAECONNRESET, 10053 is
+# WSAECONNABORTED; see probe_liveness for why both matter on Windows.
+_DROPPED_ERRNOS = frozenset({10053, 10054})
 
 
 def main() -> None:
@@ -233,9 +285,21 @@ def main() -> None:
 
     # A live app answers. Any HTTP status proves that -- the check is that we got
     # a response at all, not which one.
-    status = http_status(args.host, args.port, "/mcp", args.timeout, None)
+    status, how = probe_liveness(args.host, args.port, "/mcp", args.timeout, None)
     if status is None:
-        die("liveness", "no HTTP response at all -- see the 'output starvation' section")
+        if how == "closed":
+            die("liveness",
+                "the server accepted the connection and closed it without sending a "
+                "single byte. This is an ACTIVE REFUSAL, not a stall: a credential or "
+                "policy check dropped you. It is also what a zero-byte starvation stall "
+                "looks like, so if no credential is involved, check the output-starvation "
+                "section. If one is, the credential is being rejected -- re-issue it. "
+                "Do not read a silent close as a network fault.")
+        if how == "timeout":
+            die("liveness", f"accepted the connection, then said nothing for {args.timeout}s "
+                            "-- the output-starvation signature. See that section.")
+        die("liveness", "connection refused: nothing is listening, or the host is "
+                        "unreachable. TCP check above should already have failed.")
     if status in (401, 403):
         if args.auth == "none":
             die("liveness", f"unauthenticated /mcp returned HTTP {status} but --auth none was "

@@ -84,6 +84,34 @@ result is never overclaimed. Use `--auth required` once you have put a reverse p
 mTLS in front. `--profile vendor` keeps the older `GetSystemInfo`/`FileRead` naming for a
 server you have not replaced yet.
 
+### "No response" is three different faults
+
+A probe that fails to get an HTTP status has told you almost nothing until you know
+*why*. The verifier now separates them, because collapsing them sends you to the wrong
+layer:
+
+| Shape | What happened | Where to look |
+|---|---|---|
+| **timeout** | connection accepted, then silence for N seconds | output starvation (below), or a wedged process |
+| **closed** | connection accepted, then dropped with **zero bytes** | an active refusal — a credential or policy check rejected you |
+| **refused** | the connect itself failed | nothing listening; the network, or the process is dead |
+
+The middle one is the trap. A rejected credential produces the *same* symptom as a
+stalled server, and it is natural to read a dropped connection as a network problem. It
+is not: the server answered your TCP handshake and then decided not to talk to you.
+
+Two implementation details, both found by testing rather than reasoning:
+
+- On Windows, "accept then close" does **not** raise `http.client.RemoteDisconnected`
+  (the POSIX-flavoured type). It raises `ConnectionResetError` (WSAECONNRESET, 10054) on
+  a cold connection and `ConnectionAbortedError` (WSAECONNABORTED, 10053) on a warm one.
+  Catch only `RemoteDisconnected` and every silent drop is reported as
+  *connection refused* — a wrong answer that looks authoritative.
+- A "green" auth check can be green for the wrong reason. `awesun._token()` reports
+  `token: ok` when it can *resolve* a token, never when the API *accepts* one. Resolvable
+  is not valid. Assert on a response you actually received, not on a value you read back
+  from local state.
+
 ### Three measurement traps
 
 - **A listening port is not a responding server.** Checks 2 and 3 catch different failures;

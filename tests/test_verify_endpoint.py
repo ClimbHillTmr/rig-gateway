@@ -24,6 +24,19 @@ while True:                 # accept, then never reply: alive on the socket, sil
     c, _ = s.accept(); held.append(c)
 '''
 
+# Accept, then close WITHOUT sending a byte. Same "no response" symptom as
+# STARVED, different cause: an active refusal rather than a stall. This is what
+# the AweSun API does when it rejects a credential, and reading it as a network
+# fault cost real time. The verifier must name the right one.
+CLOSED = r'''
+import socket, sys
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(64)
+while True:
+    c, _ = s.accept()
+    c.close()               # no bytes at all
+'''
+
 MCP = r'''
 import json, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -181,6 +194,19 @@ class VerifierTests(unittest.TestCase):
         rc, out = run_verifier(port, "--profile", "vendor")
         self.assertNotEqual(rc, 0, "a listening-but-silent server must not pass")
         self.assertIn("liveness", out)
+
+    def test_silent_close_is_rejected_and_named_as_a_drop(self):
+        """Accepts then closes with no bytes: an active refusal, not a stall.
+
+        Both this and STARVED produce "no HTTP response", so a verifier that
+        collapses them sends the operator to debug the wrong layer. The message
+        must distinguish them.
+        """
+        port = self._serve(CLOSED)
+        rc, out = run_verifier(port, "--profile", "vendor")
+        self.assertNotEqual(rc, 0, "a server that drops the connection must not pass")
+        self.assertIn("closed it without sending", out)
+        self.assertNotIn("output-starvation signature", out)
 
     def test_healthy_server_passes_all_checks(self):
         port = self._serve(MCP, KEY)
