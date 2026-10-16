@@ -119,6 +119,33 @@ if ($LASTEXITCODE -ne 0) {
 # --- pre-flight: the bind decision, before anything is served ---------------
 Write-Host ''
 Write-Host '=== pre-flight ==='
+
+# Which machine is this, and what addresses does it have? Recorded because a
+# deploy to "the rig" is only meaningful if we can name the host we reached --
+# an assertion on a hostname we never read back proves nothing.
+Write-Host ("  hostname: {0}" -f $env:COMPUTERNAME)
+$v4 = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+      Where-Object { $_.IPAddress -notlike '127.*' } |
+      Select-Object -ExpandProperty IPAddress
+Write-Host ("  ipv4: {0}" -f ($v4 -join ', '))
+
+# Pick the bind address: an explicit -BindIp wins. Otherwise prefer the tailnet
+# address (100.64.0.0/10), because that is how this server is meant to be
+# reached; fall back to loopback so an accidental run is never exposed on the
+# LAN, and never silently on every interface.
+$tailnet = $v4 | Where-Object { $_ -match '^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.' } | Select-Object -First 1
+if (-not $PSBoundParameters.ContainsKey('BindIp')) {
+    if ($tailnet) {
+        $BindIp = $tailnet
+        Write-Host "  bind address: $BindIp (tailnet, auto-selected)"
+    } else {
+        $BindIp = '127.0.0.1'
+        Write-Host '  bind address: 127.0.0.1 (loopback -- no tailnet address found)'
+    }
+} else {
+    Write-Host "  bind address: $BindIp (explicit)"
+}
+
 $probe = @"
 import sys
 sys.path.insert(0, r'$Root')
