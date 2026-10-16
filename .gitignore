@@ -6,3 +6,6 @@ build/
 dist/
 *.egg-info/
 .env
+
+# local-only deployment presets (real hostnames/addresses) - never commit
+deploy/Deploy-Local-*.ps1
