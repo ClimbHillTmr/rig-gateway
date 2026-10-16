@@ -27,6 +27,8 @@ param(
     [string]$Root = $PSScriptRoot,
     [string]$BindIp = '127.0.0.1',
     [ValidateRange(1024, 65535)][int]$Port = 8099,
+    [switch]$EnableTier2,
+    [switch]$EnableTier3,
     [switch]$SkipVerify,
     [switch]$VerifyOnly
 )
@@ -191,8 +193,24 @@ public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
 
 Write-Host ''
 Write-Host "=== starting rig-gateway on http://${BindIp}:${Port}/mcp ==="
-Write-Host 'tiers: 1 only (read-only). Stop with Ctrl+C.'
+
+# Tier selection is an explicit operator choice, not a default. Tier 2 adds
+# confined write tools; tier 3 adds command execution and keystroke injection
+# and additionally requires RIG_ALLOW_TIER3=1 in the server environment, so a
+# bare -EnableTier3 cannot arm it by accident.
+$launchArgs = @('-m', 'rig_gateway.server', '--transport', 'streamable-http',
+                '--host', $BindIp, '--port', "$Port")
+if ($EnableTier3) {
+    $env:RIG_ALLOW_TIER3 = '1'
+    $launchArgs += '--enable-tier3'
+    Write-Host 'tiers: 1+2+3 (read + confined write + command/input). Stop with Ctrl+C.'
+} elseif ($EnableTier2) {
+    $launchArgs += '--enable-tier2'
+    Write-Host 'tiers: 1+2 (read + confined write). Stop with Ctrl+C.'
+} else {
+    Write-Host 'tiers: 1 (read-only). Stop with Ctrl+C.'
+}
 # NOTE: no built-in auth and no IP allowlist -- documented design. Binding to a
 # tailnet address means every device on that tailnet can reach it.
 $env:PYTHONPATH = "$Root;$env:PYTHONPATH"
-& $py -m rig_gateway.server --transport streamable-http --host $BindIp --port $Port
+& $py @launchArgs
