@@ -19,11 +19,15 @@ class RepairError(Exception):
 
 @asynccontextmanager
 async def codex_connection():
-    proc = await asyncio.create_subprocess_exec(
+    # Keep the transport so inherited Windows pipe handles can be closed even
+    # if a Codex helper outlives the stdio app-server process.
+    loop = asyncio.get_running_loop()
+    protocol = asyncio.subprocess.SubprocessStreamProtocol(16 * 1024 * 1024, loop)
+    transport, _ = await loop.subprocess_exec(lambda: protocol,
         "codex", "app-server", "--stdio", stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-        limit=16 * 1024 * 1024,
     )
+    proc = asyncio.subprocess.Process(transport, protocol, loop)
     sequence = 0
 
     async def request(method, params):
@@ -57,7 +61,10 @@ async def codex_connection():
         try:
             await asyncio.wait_for(proc.wait(), 3)
         except asyncio.TimeoutError:
-            proc.kill()
+            if proc.returncode is None:
+                proc.kill()
+        finally:
+            transport.close()
             await proc.wait()
 
 
@@ -82,7 +89,7 @@ async def registration(rpc, name):
     return layer, entry
 
 
-def check_endpoint(args, tools):
+def inspect_policy(args, tools):
     client = Mcp(str(args.host), args.port, "", 30)
     init = client.rpc("initialize", {"protocolVersion": "2025-03-26", "capabilities": {},
                                      "clientInfo": {"name": "rig-repair", "version": "1"}})
@@ -96,7 +103,11 @@ def check_endpoint(args, tools):
     info = json.loads(client.call("system_info", {}))
     if info["hostname"].casefold() != args.expect_hostname.casefold():
         raise RepairError("Windows hostname differs from the deployment record.")
-    policy = json.loads(client.call("host_status", {}))["policy"]
+    return json.loads(client.call("host_status", {}))["policy"]
+
+
+def check_endpoint(args, tools):
+    policy = inspect_policy(args, tools)
     root = policy["sandbox_root"]
     if args.expect_sandbox == "unset":
         matches = (args.tier == 1 and policy["writes_confined_to_root"] is False

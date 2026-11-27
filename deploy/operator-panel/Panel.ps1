@@ -1,12 +1,12 @@
 #requires -Version 5.1
-param([switch]$Inspect)
+param([switch]$Inspect, [switch]$Describe)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework
 [xml]$layout = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Panel.xaml') -Raw -Encoding UTF8
 $reader = New-Object System.Xml.XmlNodeReader $layout
 try { $window = [Windows.Markup.XamlReader]::Load($reader) } finally { $reader.Close() }
 $ui = @{}
-foreach ($name in 'RefreshBtn','StartBtn','BootBtn','TsBtn','GatewayState','TsState','BootState','Url','Message') {
+foreach ($name in 'CopyBtn','RefreshBtn','StartBtn','BootBtn','TsBtn','GatewayState','TsState','BootState','Url','Message') {
     $ui[$name] = $window.FindName($name)
 }
 $tsCli = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
@@ -16,6 +16,16 @@ function Flag([bool]$value) { if ($value) { Label On } else { Label Off } }
 
 function Get-Deployment {
     $task = Get-ScheduledTask -TaskName 'rig-gateway' -TaskPath '\' -ErrorAction SilentlyContinue
+    if (-not $task) {
+        $task = Get-ScheduledTask -TaskName 'rig-gateway-user' -TaskPath '\' -ErrorAction SilentlyContinue
+        if (-not $task -or $task.Description -ne 'rig-gateway one-click Tier 1' -or
+            @($task.Actions).Count -ne 1 -or @($task.Triggers).Count -ne 1 -or
+            $task.Triggers[0].CimClass.CimClassName -ne 'MSFT_TaskLogonTrigger' -or
+            $task.Principal.RunLevel -ne 'Limited' -or
+            $task.Actions[0].Execute -notlike '*\.venv\Scripts\pythonw.exe' -or
+            $task.Actions[0].Arguments -notmatch '^-I -m rig_gateway.server --transport streamable-http --host ([0-9.]+) --port ([0-9]+)$') { throw (Label Invalid) }
+        return [pscustomobject]@{Task=$task; Trigger=$task.Triggers[0]; Address=$Matches[1]; Port=[int]$Matches[2]; Tier=1; LogonOnly=$true}
+    }
     $actions = @($task.Actions)
     $triggers = @($task.Triggers)
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -29,8 +39,10 @@ function Get-Deployment {
     $runner, $root, $addr, $port, $tier = $Matches[1], $Matches[2], $Matches[3], [int]$Matches[4], $Matches[5]
     if ($runner -ne (Join-Path $root 'Run-Task.ps1') -or -not (Test-Path -LiteralPath $runner -PathType Leaf) -or
         $addr -eq '0.0.0.0' -or $port -lt 1 -or $port -gt 65535) { throw (Label Invalid) }
-    [pscustomobject]@{Task=$task; Trigger=$triggers[0]; Address=([ipaddress]$addr).ToString(); Port=$port; Tier=$tier}
+    [pscustomobject]@{Task=$task; Trigger=$triggers[0]; Address=([ipaddress]$addr).ToString(); Port=$port; Tier=$tier; LogonOnly=$false}
 }
+
+if ($Describe) { Get-Deployment; return }
 
 function Get-Listeners($deployment) {
     Get-NetTCPConnection -State Listen | Where-Object LocalPort -eq $deployment.Port
@@ -49,10 +61,12 @@ function Update-Panel {
     $ui.StartBtn.IsEnabled = $false
     $ui.BootBtn.IsEnabled = $false
     $ui.Url.Text = ''
+    $ui.CopyBtn.IsEnabled = $false
     $ui.BootState.Text = ''
     try {
         $d = Get-Deployment
         $ui.Url.Text = 'http://{0}:{1}/mcp' -f $d.Address, $d.Port
+        $ui.CopyBtn.IsEnabled = $true
         $listeners = @(Get-Listeners $d)
         $listener = if ($listeners.LocalAddress -contains $d.Address) { Label Listening }
                     elseif ($listeners.Count) { Label Busy } else { Label Idle }
@@ -69,11 +83,17 @@ function Update-Panel {
         $ui.BootState.Text = "$(Label Boot) $(Flag ($d.Trigger.Enabled -and $d.Task.State -ne 'Disabled'))  /  $(Label Logon) $logonState"
         $ui.BootBtn.Tag = -not $d.Trigger.Enabled
         $ui.BootBtn.Content = if ($d.Trigger.Enabled) { Label BootOff } else { Label BootOn }
+        if ($d.LogonOnly) {
+            $ui.BootState.Text = "$(Label Logon) $(Flag ($d.Trigger.Enabled -and $d.Task.State -ne 'Disabled'))"
+            $ui.BootBtn.Content = if ($d.Trigger.Enabled) { Label LogonOff } else { Label LogonOn }
+        }
         $ui.BootBtn.IsEnabled = $d.Task.State -ne 'Disabled'
     } catch { $ui.GatewayState.Text = $_.Exception.Message }
     try {
         $ui.TsState.Text = Get-TailscaleState
-        $ui.TsBtn.IsEnabled = $ui.TsState.Text -ne (Label TsAbsent)
+        $connected = $ui.TsState.Text -eq 'Running'
+        $ui.TsBtn.IsEnabled = -not $connected -and $ui.TsState.Text -ne (Label TsAbsent)
+        $ui.TsBtn.Content = if ($connected) { Label Connected } else { Label ConnectTs }
     } catch { $ui.TsState.Text = $_.Exception.Message }
 }
 
@@ -82,6 +102,8 @@ function Invoke-PanelAction([scriptblock]$action) {
     Update-Panel
 }
 
+$ui.CopyBtn.Add_Click({ try { [Windows.Clipboard]::SetText($ui.Url.Text); $ui.Message.Text = Label Copied }
+                         catch { $ui.Message.Text = $_.Exception.Message } })
 $ui.RefreshBtn.Add_Click({ Update-Panel })
 $ui.StartBtn.Add_Click({ Invoke-PanelAction {
     $d = Get-Deployment
@@ -96,7 +118,7 @@ $ui.BootBtn.Add_Click({ Invoke-PanelAction {
     $desired = [bool]$ui.BootBtn.Tag
     if ($d.Trigger.Enabled -ne $desired) {
         $d.Trigger.Enabled = $desired
-        Set-ScheduledTask -TaskName 'rig-gateway' -TaskPath '\' -Trigger $d.Trigger | Out-Null
+        Set-ScheduledTask -TaskName $(if ($d.LogonOnly) { 'rig-gateway-user' } else { 'rig-gateway' }) -TaskPath '\' -Trigger $d.Trigger | Out-Null
     }
     if ((Get-Deployment).Trigger.Enabled -ne $desired) { throw (Label Invalid) }
     Label Saved

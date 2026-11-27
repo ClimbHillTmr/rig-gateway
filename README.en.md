@@ -2,81 +2,69 @@
 
 [简体中文](README.md) · **English**
 
-Give an AI client read-only access to a Windows host’s status, processes, and files. The gateway runs on the Windows host. A client on that machine can launch it over stdio, or a client elsewhere can connect to its Streamable HTTP endpoint over a private network.
+Connect Codex or Claude Code to a Windows machine to inspect its status, processes and files over a private network. The **host PC** runs the MCP gateway. The **client PC** runs the AI client.
 
-| What are you starting with? | Start here |
-|---|---|
-| First use, with the host or client still to set up | [Ask an AI to install, configure, and verify](docs/ai-setup.en.md) · [Manual setup](#first-connection) |
-| An MCP client already configured for this host | [Give the AI a read-only connection check](docs/ai-connect.en.md) |
-| Another computer or a colleague’s account | [Connect through Tailscale](#connect-through-tailscale) |
-| A deployment to maintain or a connection that fails | [Operator guide](docs/operations.en.md) |
-| Operate an existing gateway on the Windows host | [Open the host control panel](docs/operations.en.md#windows-operator-panel) |
+## One-click setup over Tailscale
 
-**For a first installation, copy this sentence into your AI client:**
+Download and extract the [source ZIP](https://github.com/ClimbHillTmr/rig-gateway/archive/refs/heads/main.zip) on both Windows PCs, or check out the same Git revision. Keep the host folder in its permanent location. First-time setup needs network access and uses WinGet for missing software. Complete any Windows installation prompts and sign in to Tailscale when asked.
 
-```text
-Read https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.en.md and execute the “First-time setup” prompt to install the gateway on the host, configure my client, and report the results of the read-only connection checks.
+| Order | Computer | Double-click in the repository root | Successful result |
+|---|---|---|---|
+| 1 | Host PC | [Setup-Host.cmd](Setup-Host.cmd) | Shows the verified URL and tier and creates `rig-connection.json` |
+| 2 | Client PC | [Setup-Client.cmd](Setup-Client.cmd) | Your selected client, Codex or Claude Code, confirms the connection |
+
+**On the host**, setup prepares Tailscale and Python. For a new deployment, it creates a virtual environment, installs the gateway, registers a current-user login task and starts a **Tier 1 read-only** instance. The default port is `8099`. Setup reuses the address, port and tier of a supported existing task. An occupied port blocks a new deployment. To choose another port, run this from the source root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/Setup-Windows.ps1 -Role Host -Port 8100
 ```
 
-If your client is already connected, send it this prompt:
+**On the client**, place the host’s `rig-connection.json` next to `Setup-Client.cmd` or choose it in the file picker. Setup prepares Tailscale, Python and the selected client CLI. It checks the Windows hostname, full tool inventory and sandbox before registration. Codex discovers tools through a fresh connection. Claude Code checks the effective URL and reports `Connected`. Complete any account sign-in in the client. Share the record privately with the intended operator because it identifies the deployment and its private address.
 
-> List the configured rig-gateway tools. Call `system_info` and `host_status`, then report the observed hostname, tool count, and sandbox path. Use read-only checks throughout.
+### Additional devices and accounts
+
+- **Another device you own** can sign in to the same tailnet and run client setup.
+- **A teammate** can accept an invitation under Tailscale **Users** using their own account. Grant access to the gateway port.
+- **An external collaborator** can accept a single-machine share under **Machines → Share**. Check both tailnets’ access policies. Authorized clients can reuse the same host record. [Inviting vs. sharing](https://tailscale.com/docs/reference/inviting-vs-sharing)
+
+## Host control panel
+
+Double-click [Open-Panel.cmd](deploy/operator-panel/Open-Panel.cmd). The panel shows the listener and a copyable MCP URL above the Tailscale and startup controls. A new deployment supports **start at user login**. An existing boot-task deployment supports **start at boot** and shows the login trigger separately. [Host controls and permissions](docs/operations.en.md#windows-operator-panel)
+
+![Windows host control panel](docs/operator-panel.png)
+
+## Give the setup to an AI
+
+Copy this sentence into an AI that can operate both machines:
+
+```text
+Read https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.en.md and execute the first-time setup prompt to install the host, configure the client and report the read-only verification results.
+```
+
+For an existing connection, use the [read-only acceptance prompt](docs/ai-connect.en.md) to check the tools, hostname and sandbox.
 
 ## First connection
 
-Start on a Windows machine with **Python 3.10 or later**. Clone this repository or select **Code → Download ZIP** on GitHub and extract the archive. Open both PowerShell windows in the directory containing `pyproject.toml`.
-
-**1. Start the server on the Windows host.** The loopback address keeps this first session local. Leave the window open.
+**A same-machine trial works without Tailscale.** From the source root on Windows with Python 3.10+:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[mcp]"
+.\.venv\Scripts\python.exe -m pip install ".[mcp]"
 .\.venv\Scripts\rig-gateway.exe --transport streamable-http --host 127.0.0.1 --port 8099
 ```
 
-**2. Verify the connection on the same machine.** In a second window, run the verifier. It negotiates an MCP session, checks the tool names, and calls `system_info` to verify the hostname.
+Keep the window open and use `http://127.0.0.1:8099/mcp` in the local client. For stdio, configure the absolute executable path with `--transport stdio`. On a trusted LAN or another VPN, bind the gateway to the reachable private interface and restrict port access. The two setup launchers use Tailscale. [Manual connection and verification](docs/operations.en.md#remote-access)
 
-```powershell
-.\.venv\Scripts\python.exe .\skills\rig-remote-ops\scripts\verify_endpoint.py --host 127.0.0.1 --port 8099 --auth none --tier 1 --expect-hostname ([Environment]::MachineName)
-```
+## Permissions and troubleshooting
 
-**A successful run** ends when `tools/list` reports the five expected tools, `identity` confirms the full hostname, and the verifier exits with code 0. A sandbox value of `(unset)` is expected on a first read-only run.
-
-## Connect an MCP client
-
-| Where is the client? | What to enter |
+| Situation | What to check |
 |---|---|
-| On the host, over stdio | The absolute path to `.venv\Scripts\rig-gateway.exe`, with arguments `--transport` and `stdio`. The client starts its own process. |
-| On the host, over HTTP | Select **Streamable HTTP** and enter `http://127.0.0.1:8099/mcp` for the instance started above. |
-| On another computer | Select **Streamable HTTP** and enter `http://<host-private-ip>:<deployed-port>/mcp`. The service must listen on that interface. Use the actual port from the host. |
-
-## Connect through Tailscale
-
-Tailscale is optional for local use and for computers that can already reach each other on a trusted LAN or VPN. To connect directly over Tailscale, install it on the gateway host and each client computer and sign in. Only the host runs the gateway. [Windows download](https://tailscale.com/download/windows)
-
-- **Your second computer:** use your own account and select the same tailnet.
-- **A teammate:** invite their own account to your tailnet through **Users** and allow access to the gateway port.
-- **An external collaborator:** share the individual host through **Machines → Share**. Both tailnets must allow the connection.
-
-On the host, `tailscale ip -4` gives the address to bind. All authorized clients can reuse that endpoint. [Configure the host and verify from a second computer](docs/operations.en.md#remote-access)
-
-## Tools and permissions
-
-The default instance advertises **5 read-only tools**. `--enable-tier2` advertises **12** including file changes and screenshots. `--enable-tier3` advertises **15**. Calling the shell and keyboard tools also requires `RIG_ALLOW_TIER3=1` on the server. The gateway has no built-in HTTP authentication. Limit network access before exposing an endpoint. [File, desktop, and command permissions](docs/operations.en.md#permissions)
-
-## Troubleshooting
-
-If the local check passes but the remote client fails, compare the bind address and deployed port first. Use the first failed verifier step to narrow down the cause. [Troubleshooting by symptom](docs/operations.en.md#troubleshooting)
-
-If the gateway port changed, run the client-side repair command. It verifies the host and permissions, updates the local Codex URL, and opens a fresh connection. [Repair a changed Codex port](docs/reliability.en.md#repair-a-changed-codex-port)
+| Local access succeeds but the remote client fails | Check sign-in, invitations or sharing, port access policy and the actual listener. [Troubleshooting by symptom](docs/operations.en.md#troubleshooting) |
+| The gateway changed port | Generate a fresh host record. Codex can verify identity and permissions and repair its local URL. Claude Code reports a conflicting URL for inspection. [Codex port repair](docs/reliability.en.md#repair-a-changed-codex-port) |
+| The operator needs screenshots, file writes or input | Tier 1 offers 5 read-only tools, Tier 2 offers 12 and Tier 3 offers 15. Command execution and input also require explicit host authorization. Gateway HTTP has no built-in authentication. Limit access using private network policy. [Permissions and sandbox](docs/operations.en.md) |
 
 ## Development and license
 
-Run the tests from the repository root.
+Run `python -m pytest tests -q` from the repository root. Exercise the Windows panel with `powershell -NoProfile -STA -ExecutionPolicy Bypass -File tests/test_operator_panel.ps1`.
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install pytest
-.\.venv\Scripts\python.exe -m pytest tests -q
-```
-
-The server uses the Python MCP SDK. Its tool design draws on `dddabtc/winremote-mcp`, which credits `CursorTouch/Windows-MCP`. The operating skill and verifier grew out of `ClimbHillTmr/remote-win-mcp`. The verifier retains `--profile vendor` for legacy tool names. [MIT license](LICENSE)
+The server uses the Python MCP SDK. Its tools draw on `dddabtc/winremote-mcp`, which credits `CursorTouch/Windows-MCP`. The operating skill and verifier grew out of `ClimbHillTmr/remote-win-mcp`. The verifier supports legacy tool names with `--profile vendor`. [MIT license](LICENSE)

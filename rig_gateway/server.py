@@ -481,6 +481,12 @@ def resolve_http_binding(run_callable: Any) -> str:
 
 
 def main() -> None:
+    # Scheduled pythonw processes have no console streams. The HTTP server's
+    # logging formatter expects file-like streams even with no terminal.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--transport", default="stdio", choices=["stdio", "streamable-http"])

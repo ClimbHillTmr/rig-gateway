@@ -1,16 +1,27 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
-        Title="Rig Gateway · 真机连接" Width="630" Height="540" MinWidth="530" MinHeight="470"
+        Title="Rig Gateway · 真机连接" Width="650" Height="505" MinWidth="530" MinHeight="470"
         WindowStartupLocation="CenterScreen" Background="#F3F6FA" FontFamily="Microsoft YaHei UI" FontSize="14">
   <Window.Resources>
     <Style TargetType="Button">
-      <Setter Property="Padding" Value="14,6"/><Setter Property="Margin" Value="8,0,0,0"/>
-      <Setter Property="MinWidth" Value="85"/><Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="14,7"/><Setter Property="MinHeight" Value="34"/>
+      <Setter Property="Margin" Value="8,0,0,0"/><Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Background" Value="#EDF2F6"/><Setter Property="Foreground" Value="#183247"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="Surface" CornerRadius="5" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value=".86"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value=".53"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style TargetType="Border"><Setter Property="Padding" Value="16"/><Setter Property="Margin" Value="0,0,0,9"/>
-      <Setter Property="CornerRadius" Value="7"/><Setter Property="Background" Value="White"/></Style>
     <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+    <sys:String x:Key="Connected">已连接</sys:String><sys:String x:Key="ConnectTs">启动 Tailscale</sys:String>
+    <sys:String x:Key="Copied">已复制控制端连接地址。</sys:String>
+    <sys:String x:Key="LogonOn">启用登录启动</sys:String><sys:String x:Key="LogonOff">关闭登录启动</sys:String>
     <sys:String x:Key="On">已启用</sys:String><sys:String x:Key="Off">已关闭</sys:String>
     <sys:String x:Key="Listening">端口正在监听</sys:String><sys:String x:Key="Idle">端口未监听</sys:String>
     <sys:String x:Key="Busy">同端口已有其他监听，请核对部署。</sys:String>
@@ -19,34 +30,50 @@
     <sys:String x:Key="Task">任务状态</sys:String><sys:String x:Key="Refresh">刷新状态</sys:String>
     <sys:String x:Key="BootOn">启用开机启动</sys:String><sys:String x:Key="BootOff">关闭开机启动</sys:String>
     <sys:String x:Key="Started">已提交启动请求。稍后刷新查看监听状态。</sys:String>
-    <sys:String x:Key="Saved">已更新开机触发器。</sys:String>
+    <sys:String x:Key="Saved">已更新自启动设置。</sys:String>
     <sys:String x:Key="TsStart">已打开 Tailscale 连接窗口。按窗口提示完成登录或连接，再刷新状态。</sys:String>
     <sys:String x:Key="TsReady">Tailscale 已连接。</sys:String>
     <sys:String x:Key="TsAbsent">未安装 Tailscale</sys:String>
     <sys:String x:Key="TaskDisabled">计划任务本身已禁用，请在任务计划程序中检查。</sys:String>
-    <sys:String x:Key="Invalid">找不到匹配的 rig-gateway 开机任务，或任务配置与部署格式不符。</sys:String>
+    <sys:String x:Key="Invalid">未找到受支持的网关任务。首次部署请运行 Setup-Host.cmd。</sys:String>
   </Window.Resources>
-  <ScrollViewer VerticalScrollBarVisibility="Auto">
+  <ScrollViewer Background="#F3F6FA" VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="24,18">
-      <DockPanel Margin="0,0,0,15">
+      <DockPanel Margin="0,0,0,16">
         <Button Name="RefreshBtn" DockPanel.Dock="Right" Content="刷新状态"/>
-        <TextBlock Text="真机连接" FontSize="27" FontWeight="SemiBold"/>
+        <TextBlock Text="真机连接面板" FontSize="26" Foreground="#142E40" FontWeight="SemiBold"/>
       </DockPanel>
-      <Border><StackPanel>
-        <TextBlock Text="Rig Gateway" FontSize="19" FontWeight="SemiBold"/>
-        <TextBox Name="Url" BorderThickness="0" IsReadOnly="True" FontFamily="Consolas" FontSize="16" Margin="0,6"/>
-        <DockPanel><Button Name="StartBtn" DockPanel.Dock="Right" Content="启动连接"/>
-          <TextBlock Name="GatewayState" VerticalAlignment="Center"/></DockPanel>
-      </StackPanel></Border>
-      <Border><DockPanel><Button Name="TsBtn" DockPanel.Dock="Right" Content="启动 Tailscale"/>
-        <StackPanel><TextBlock Text="Tailscale" FontSize="18" FontWeight="SemiBold"/>
-          <TextBlock Name="TsState" Margin="0,4,0,0"/></StackPanel>
-      </DockPanel></Border>
-      <Border><DockPanel><Button Name="BootBtn" DockPanel.Dock="Right" Content="开机自启动"/>
-        <StackPanel><TextBlock Text="网关自启动" FontSize="18" FontWeight="SemiBold"/>
-          <TextBlock Name="BootState" Margin="0,4,0,0"/></StackPanel>
-      </DockPanel></Border>
-      <TextBlock Name="Message" Foreground="#294663" Margin="2,5,2,0"/>
+      <Border Background="#153747" CornerRadius="10" Padding="20,16">
+        <StackPanel>
+          <TextBlock Text="MCP 连接地址" Foreground="#B7D4DC"/>
+          <DockPanel Margin="0,7,0,13">
+            <Button Name="CopyBtn" DockPanel.Dock="Right" Content="复制地址"/>
+            <TextBox Name="Url" VerticalAlignment="Center" IsReadOnly="True" BorderThickness="0"
+                     Background="Transparent" Foreground="White" FontFamily="Consolas" FontSize="19"/>
+          </DockPanel>
+          <Separator Background="#456777"/>
+          <DockPanel Margin="0,10,0,0">
+            <Button Name="StartBtn" DockPanel.Dock="Right" Content="启动连接" Background="#ABEBCE"/>
+            <TextBlock Name="GatewayState" Foreground="White" VerticalAlignment="Center"/>
+          </DockPanel>
+        </StackPanel>
+      </Border>
+      <Border Background="White" CornerRadius="10" Margin="0,12,0,0" Padding="18,4">
+        <StackPanel>
+          <DockPanel Margin="0,12">
+            <Button Name="TsBtn" DockPanel.Dock="Right" Content="启动 Tailscale"/>
+            <StackPanel><TextBlock Text="Tailscale 专网" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Name="TsState" Foreground="#405A6A" Margin="0,4,0,0"/></StackPanel>
+          </DockPanel>
+          <Separator Background="#D4DFE4"/>
+          <DockPanel Margin="0,12">
+            <Button Name="BootBtn" DockPanel.Dock="Right" Content="自启动设置"/>
+            <StackPanel><TextBlock Text="网关自启动" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Name="BootState" Foreground="#405A6A" Margin="0,4,0,0"/></StackPanel>
+          </DockPanel>
+        </StackPanel>
+      </Border>
+      <TextBlock Name="Message" Foreground="#294663" Margin="2,10"/>
     </StackPanel>
   </ScrollViewer>
 </Window>

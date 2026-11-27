@@ -2,81 +2,69 @@
 
 **简体中文** · [English](README.en.md)
 
-让 AI 客户端以只读方式查看 Windows 主机的状态、进程和文件。网关运行在目标 Windows 主机上。同机客户端可以通过 stdio 启动网关，其他电脑可以通过私网访问它的 Streamable HTTP 服务。
+从 Codex 或 Claude Code 通过私网查看 Windows 真机的状态、进程和文件。**目标机**运行 MCP 网关，**使用机**运行 AI 客户端。两台 Windows 电脑各有一个双击入口。
 
-| 你现在的情况 | 从这里开始 |
-|---|---|
-| 第一次使用，目标机或控制端还没配置 | [让 AI 从零安装、配置并验证](docs/ai-setup.md) · [手动安装](#首次连接) |
-| MCP 客户端已经配置了目标机 | [让 AI 验收现有连接](docs/ai-connect.md) |
-| 想从第二台电脑或同事的账号连接 | [通过 Tailscale 连接](#通过-tailscale-连接) |
-| 需要部署、重启或诊断故障 | [操作手册](docs/operations.md) |
-| 在真机上启动网关、连接 Tailscale 或设置开机启动 | [打开真机操作面板](docs/operations.md#真机操作面板) |
+## 通过 Tailscale 一键接入
 
-**首次安装时，复制这句话给 AI：**
+在两台电脑上下载并完整解压[源码 ZIP](https://github.com/ClimbHillTmr/rig-gateway/archive/refs/heads/main.zip)，或使用同一版本的 Git 检出。请长期保留目标机上的安装目录。首次安装需要网络；缺少依赖时脚本通过 Windows 包管理器 WinGet 安装。按窗口提示完成安装授权和 Tailscale 登录。
 
-```text
-请读取 https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.md 并执行其中的「从零接入」提示词，完成目标机安装、控制端配置和只读连接验证，再报告实测结果。
+| 顺序 | 在哪里操作 | 双击仓库根目录中的文件 | 完成标志 |
+|---|---|---|---|
+| 1 | 目标机 | [Setup-Host.cmd](Setup-Host.cmd) | 显示已验证的 URL、权限级别，并生成 `rig-connection.json` |
+| 2 | 使用机 | [Setup-Client.cmd](Setup-Client.cmd) | 选择 Codex 或 Claude Code，客户端确认已连接到目标机 |
+
+**目标机。** 入口准备 Tailscale 和 Python，首次部署时创建虚拟环境、安装网关、注册当前用户的登录任务并立即启动 **Tier 1，只读**。默认端口为 `8099`。已有受支持的网关任务时，读取其实际地址、端口和权限。端口被其他监听占用时会提示处理。需要指定新部署端口时，从仓库根目录运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/Setup-Windows.ps1 -Role Host -Port 8100
 ```
 
-如果客户端已经连好，可以直接发给 AI：
+**使用机。** 将目标机生成的 `rig-connection.json` 私下传给使用者，放在 `Setup-Client.cmd` 旁边，或在文件选择框中选取。入口准备 Tailscale、Python 和所选客户端 CLI。配置前核对 Windows 主机名、完整工具清单和沙箱。Codex 会建立新连接核对工具；Claude Code 会检查实际 URL 和 `Connected` 状态。客户端账号登录按应用提示完成。记录内含私网地址和部署信息，请通过可信渠道传递。
 
-> 请列出 rig-gateway 的完整工具清单，调用 `system_info` 和 `host_status`，报告主机名、工具数和沙箱路径。只执行只读检查。
+### 多设备与多账号
+
+- **自己的第二台电脑**：登录同一 tailnet，再运行使用机入口。
+- **团队成员**：管理员在 Tailscale **Users** 邀请对方自己的账号，允许访问目标机的网关端口。
+- **外部协作者**：通过 **Machines → Share** 共享指定目标机，核对双方的访问规则。每台获准的使用机可以复用同一份连接记录。[邀请与设备共享](https://tailscale.com/docs/reference/inviting-vs-sharing)
+
+## 真机操作面板
+
+双击 [Open-Panel.cmd](deploy/operator-panel/Open-Panel.cmd)。顶部显示可复制的 MCP 地址和监听状态，下方显示 Tailscale 和自启动状态。新部署可切换**当前用户登录后启动**。已有开机任务的现场部署可切换**开机启动**，并单独查看登录任务状态。[面板与任务权限](docs/operations.md#真机操作面板)
+
+![Windows host control panel](docs/operator-panel.png)
+
+## 让 AI 帮忙
+
+从零部署时，把下面这句复制给能操作目标机和使用机的 AI：
+
+```text
+请读取 https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.md 并执行其中的从零接入提示词，完成目标机安装、使用机配置和只读连接验证，报告实际结果。
+```
+
+仅验收已有连接时，使用[只读验收提示词](docs/ai-connect.md)，检查工具列表、主机名和沙箱。
 
 ## 首次连接
 
-目标 Windows 主机需要 **Python 3.10 或更新版本**。先用 Git 克隆本仓库，或从 GitHub 的 **Code → Download ZIP** 下载并解压。打开含有 `pyproject.toml` 的目录，以下两个 PowerShell 窗口都从这里开始。
-
-**1. 在目标机启动服务。** 首次使用回环地址，只允许本机连接。保持这个窗口打开。
+**同机试用可以不用 Tailscale。** 在已安装 Python 3.10+ 的 Windows 机器上，从源码根目录运行：
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[mcp]"
+.\.venv\Scripts\python.exe -m pip install ".[mcp]"
 .\.venv\Scripts\rig-gateway.exe --transport streamable-http --host 127.0.0.1 --port 8099
 ```
 
-**2. 在同一台机器验证连接。** 打开第二个窗口。验证器会完成 MCP 握手，比对工具名称，再调用 `system_info` 核对主机名。
+保持窗口打开，客户端使用 `http://127.0.0.1:8099/mcp`。同机客户端也可用可执行文件的绝对路径和 `--transport stdio` 启动网关。跨机走受信局域网或其他 VPN 时，将网关绑定到可达的私网接口，并限制端口访问。双击部署入口专用于 Tailscale。[手动连接与验证](docs/operations.md#远程接入)
 
-```powershell
-.\.venv\Scripts\python.exe .\skills\rig-remote-ops\scripts\verify_endpoint.py --host 127.0.0.1 --port 8099 --auth none --tier 1 --expect-hostname ([Environment]::MachineName)
-```
+## 权限与故障排查
 
-**成功标志**是 `tools/list` 恰好列出 5 个预期工具、`identity` 确认完整主机名，且脚本退出码为 0。首次只读运行时，沙箱显示 `(unset)` 属于正常结果。
-
-## 接入 MCP 客户端
-
-| 客户端在哪里？ | 应填写什么？ |
+| 症状或需求 | 检查什么 |
 |---|---|
-| 目标机上，使用 stdio | 程序填 `.venv\Scripts\rig-gateway.exe` 的绝对路径，参数填 `--transport` 和 `stdio`。客户端自行启动进程。 |
-| 目标机上，使用 HTTP | 选择 **Streamable HTTP**。若使用上面的启动命令，URL 填 `http://127.0.0.1:8099/mcp`。 |
-| 另一台电脑上 | 选择 **Streamable HTTP**，URL 填 `http://<目标机私网IP>:<部署端口>/mcp`。服务须监听该网卡的地址，端口以目标机实际配置为准。 |
-
-## 通过 Tailscale 连接
-
-同机使用，或两台电脑已能通过受信局域网或 VPN 互通时，Tailscale 是可选的。选择 Tailscale 直连时，在目标机和每台控制电脑上安装并登录。只有目标机需要运行网关。[下载 Windows 版](https://tailscale.com/download/windows)
-
-- **自己的第二台电脑**：用自己的账号登录，选择同一个 Tailscale 私网。
-- **团队成员**：管理员在 **Users** 邀请同事自己的账号，并放行目标机的网关端口。
-- **外部协作者**：在 **Machines → Share** 单独共享目标机。双方私网的访问规则均须允许这次连接。
-
-在目标机运行 `tailscale ip -4` 可取得绑定地址，获准访问的客户端共用同一 URL。[配置目标端并从第二台电脑验收](docs/operations.md#远程接入)
-
-## 工具与权限
-
-默认实例提供 **5 个只读工具**。`--enable-tier2` 开放文件操作与截图，共 **12 个工具**。`--enable-tier3` 共 **15 个工具**，调用命令和键盘工具还需在服务端设置 `RIG_ALLOW_TIER3=1`。网关没有内置 HTTP 认证，对外提供私网服务前应限定访问范围。[文件、桌面和命令的权限说明](docs/operations.md#权限设置)
-
-## 连接故障
-
-如果本机通过、远程失败，先核对绑定地址和实际端口，再按验证器第一个失败的步骤定位原因。[按现象排障](docs/operations.md#故障排查)
-
-网关换了端口时，在控制端运行自动修复命令。它会核对目标机身份和权限，更新本地 Codex 条目的 URL，并建立新连接验收。[自动修复 Codex 端口](docs/reliability.md#自动修复-codex-端口)
+| 目标机本地可用，使用机失败 | 两端登录状态、设备邀请或共享、端口访问规则和实际监听地址。[按现象排障](docs/operations.md#故障排查) |
+| 端口发生变化 | 在目标机重新生成连接记录。Codex 可以核对身份和权限后更新本地 URL；Claude Code 遇到不同 URL 会提示检查已有条目。[Codex 端口修复](docs/reliability.md#自动修复-codex-端口) |
+| 需要写文件、截图或远程输入 | Tier 1 提供 5 个只读工具；Tier 2 共 12 个；Tier 3 共 15 个，执行命令和输入还需服务端显式授权。网关 HTTP 本身无身份认证，应通过私网访问规则限定使用者。[权限与沙箱](docs/operations.md) |
 
 ## 开发与许可
 
-在仓库根目录运行测试：
+在仓库根目录运行 `python -m pytest tests -q`。Windows 面板测试使用 `powershell -NoProfile -STA -ExecutionPolicy Bypass -File tests/test_operator_panel.ps1`。
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install pytest
-.\.venv\Scripts\python.exe -m pytest tests -q
-```
-
-项目使用 Python MCP SDK。工具设计参考 `dddabtc/winremote-mcp` 及其致谢的 `CursorTouch/Windows-MCP`。操作技能与验证器延续自 `ClimbHillTmr/remote-win-mcp`，旧工具名仍可通过 `--profile vendor` 验证。[MIT 许可证](LICENSE)
+服务端使用 Python MCP SDK。工具设计参考 `dddabtc/winremote-mcp` 及其致谢的 `CursorTouch/Windows-MCP`，操作技能与验证器源自 `ClimbHillTmr/remote-win-mcp`。旧工具名可使用 `--profile vendor` 验证。[MIT 许可证](LICENSE)

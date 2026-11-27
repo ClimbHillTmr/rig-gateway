@@ -6,7 +6,7 @@
 
 ## 真机操作面板
 
-把 [operator-panel 文件夹](../deploy/operator-panel)中的三个文件放在目标机同一目录，双击 `Open-Panel.cmd`。面板读取任务计划程序根目录下的 `rig-gateway` 开机任务，从现有 `Run-Task.ps1` 启动参数取得监听地址、端口和权限级别。只有前台进程的部署会显示网关控制不可用。
+把 [operator-panel 文件夹](../deploy/operator-panel)中的三个文件放在目标机同一目录，双击 `Open-Panel.cmd`。新的一键部署使用当前用户的 `rig-gateway-user` 登录任务。已有现场部署时，面板读取任务计划程序根目录下的 `rig-gateway` 开机任务，从现有 `Run-Task.ps1` 启动参数取得监听地址、端口和权限级别。只有前台进程的部署会显示网关控制不可用。
 
 - **启动连接**会启动已有网关任务。面板显示实际配置的 URL、任务状态和端口监听状态。启动后点“刷新状态”，再从控制端验收 MCP。
 - **启动 Tailscale** 会按需启动已安装的 Windows 服务并请求连接。需要登录时，在真机完成登录。同机回环、可达的受信局域网或其他 VPN 都可以不用 Tailscale。若网关只监听 Tailscale IP，当前 URL 就需要这条网络。

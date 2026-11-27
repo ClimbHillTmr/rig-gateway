@@ -6,7 +6,7 @@ The **host** runs the Windows gateway. The **client computer** runs the MCP clie
 
 ## Windows operator panel
 
-On the host, keep the three files in [operator-panel](../deploy/operator-panel) together and double-click `Open-Panel.cmd`. The panel reads the existing root-level `rig-gateway` boot task (PowerShell running `Run-Task.ps1` with the deployed address, port and tier). On a foreground-only installation the gateway controls are unavailable.
+On the host, keep the three files in [operator-panel](../deploy/operator-panel) together and double-click `Open-Panel.cmd`. One-click setup uses the current user’s `rig-gateway-user` login task. For existing deployments, the panel reads the root-level `rig-gateway` boot task (PowerShell running `Run-Task.ps1` with the deployed address, port and tier). On a foreground-only installation the gateway controls are unavailable.
 
 - **启动连接** starts the registered gateway task. The panel shows the saved URL, task state and listener. After starting, refresh the status and verify MCP from the client.
 - **启动 Tailscale** starts the installed Windows service if needed and requests a connection. Complete any sign-in on the host. Tailscale is optional for loopback or a reachable trusted LAN/VPN address. A gateway bound only to its Tailscale IP needs that network for its current URL.

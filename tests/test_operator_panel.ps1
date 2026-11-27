@@ -5,16 +5,16 @@ try {
     $bootTrigger = [pscustomobject]@{Enabled=$true;CimClass=@{CimClassName='MSFT_TaskBootTrigger'}}
     $action = @{Execute=(Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe')
         Arguments=('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Root "{1}" -BindIp "127.0.0.1" -Port 8112 -Tier 1' -f $runner.FullName,$tempRoot)}
-    $taskFixture = [pscustomobject]@{Description='rig-gateway scheduled task';State='Ready';Actions=@($action);Triggers=@($bootTrigger)}
+    $taskFixture = [pscustomobject]@{TaskName='rig-gateway'; Description='rig-gateway scheduled task';State='Ready';Actions=@($action);Triggers=@($bootTrigger)}
     $script:started = 0
     $script:saved = 0
     $script:ports = @()
-    function Get-ScheduledTask($TaskName,$TaskPath) { if ($TaskName -eq 'rig-gateway') { $taskFixture } }
+    function Get-ScheduledTask($TaskName,$TaskPath) { if ($TaskName -eq $taskFixture.TaskName) { $taskFixture } }
     function Get-NetTCPConnection($State) { $script:ports }
     function Get-Service($Name) { return $null }
     function Start-ScheduledTask($InputObject) { $script:started++ }
     function Set-ScheduledTask($TaskName,$TaskPath,$Trigger) {
-        if ($TaskName -ne 'rig-gateway' -or $TaskPath -ne '\') { throw 'wrong task' }
+        if ($TaskName -ne $taskFixture.TaskName -or $TaskPath -ne '\') { throw 'wrong task' }
         $script:saved++
     }
     . (Join-Path $PSScriptRoot '../deploy/operator-panel/Panel.ps1') -Inspect | Out-Null
@@ -34,6 +34,16 @@ try {
     $action.Arguments='-File "unrelated.ps1"'
     Update-Panel
     if ($ui.BootBtn.IsEnabled -or $ui.StartBtn.IsEnabled) { throw 'unexpected action accepted' }
+    $taskFixture.TaskName = 'rig-gateway-user'
+    $taskFixture.Description = 'rig-gateway one-click Tier 1'
+    $taskFixture | Add-Member Principal @{RunLevel='Limited'}
+    $bootTrigger.CimClass.CimClassName = 'MSFT_TaskLogonTrigger'
+    $action.Execute = Join-Path $tempRoot '.venv\Scripts\pythonw.exe'
+    $action.Arguments = '-I -m rig_gateway.server --transport streamable-http --host 100.64.0.42 --port 8099'
+    Update-Panel
+    if ($ui.Url.Text -ne 'http://100.64.0.42:8099/mcp' -or -not $ui.CopyBtn.IsEnabled) { throw 'user endpoint missing' }
+    Click $ui.BootBtn
+    if ($script:saved -ne 3 -or $bootTrigger.Enabled) { throw 'user logon toggle failed' }
     'Panel controls passed.'
 } finally {
     if ($runner) { Remove-Item -LiteralPath $runner.FullName }
