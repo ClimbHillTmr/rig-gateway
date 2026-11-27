@@ -1,12 +1,14 @@
-# rig-gateway
+# Windows Rig MCP
 
 [简体中文](README.md) · **English**
 
-Connect Codex or Claude Code to a Windows machine to inspect its status, processes and files over a private network. The **host PC** runs the MCP gateway. The **client PC** runs the AI client.
+Windows Rig MCP is a self-hosted MCP server that connects Codex and Claude Code to Windows test rigs over a private network. By default, the AI client can inspect host status, list processes, browse directories and read files. An operator can also enable screenshots and file writes within a designated sandbox.
+
+The **host PC** runs the gateway. The **client PC** runs the AI application. For a Tailscale connection, each PC has its own setup launcher. The installed command and MCP entry are both named `rig-gateway`.
 
 ## One-click setup over Tailscale
 
-Download and extract the [Windows release ZIP](https://github.com/ClimbHillTmr/rig-gateway/releases/latest/download/rig-gateway-windows.zip) on both Windows PCs, or check out the same Git revision. Keep the host folder in its permanent location. First-time setup needs network access and uses WinGet for missing software. Complete any Windows installation prompts and sign in to Tailscale when asked.
+Download and extract the [Windows release ZIP](https://github.com/ClimbHillTmr/windows-rig-mcp/releases/latest/download/rig-gateway-windows.zip) on both Windows PCs, or check out the same Git revision. Keep the host folder in its permanent location. First-time setup needs network access and uses WinGet for missing software. Complete any Windows installation prompts and sign in to Tailscale when asked.
 
 | Order | Computer | Double-click in the repository root | Successful result |
 |---|---|---|---|
@@ -38,7 +40,7 @@ Double-click [Open-Panel.cmd](deploy/operator-panel/Open-Panel.cmd). The panel s
 Copy this sentence into an AI that can operate both machines:
 
 ```text
-Read https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.en.md and execute the first-time setup prompt to install the host, configure the client and report the read-only verification results.
+Read https://github.com/ClimbHillTmr/windows-rig-mcp/blob/main/docs/ai-setup.en.md and execute the first-time setup prompt to install the host, configure the client and report the read-only verification results.
 ```
 
 For an existing connection, use the [read-only acceptance prompt](docs/ai-connect.en.md) to check the tools, hostname and sandbox.
@@ -69,7 +71,7 @@ The installed task owns the port. With no task, host setup reuses the port in a 
 
 If an address works and later reverts, compare the task, the exported record, the effective client entry and any shared configuration manager. After a deliberate port change, run host setup to export a fresh record, update the manager’s named server URL and rerun client setup. Codex supports verified port repair. For Claude Code, update the user entry if it still has the old URL, then check `claude mcp get rig-gateway` for `Connected`.
 
-Download a specific version and `SHA256SUMS.txt` from [Releases](https://github.com/ClimbHillTmr/rig-gateway/releases). Compare `(Get-FileHash .\rig-gateway-windows.zip -Algorithm SHA256).Hash` with the listed digest before extracting. On the client, run the new launcher with the trusted host record. On the host, keep the original directory, task, private record and rollback package. Running setup from a second folder reuses the existing task and verifies its endpoint; the installed service still runs its original package.
+Download a specific version and `SHA256SUMS.txt` from [Releases](https://github.com/ClimbHillTmr/windows-rig-mcp/releases). Compare `(Get-FileHash .\rig-gateway-windows.zip -Algorithm SHA256).Hash` with the listed digest before extracting. On the client, run the new launcher with the trusted host record. On the host, keep the original directory, task, private record and rollback package. Running setup from a second folder reuses the existing task and verifies its endpoint; the installed service still runs its original package.
 
 To upgrade a one-click Tier 1 service during maintenance, stop its `rig-gateway-user` task, install the new extracted source with the **registered environment’s** `python.exe -m pip install "<new-source-directory>[mcp]"` and run host setup with the retained record. To roll back, repeat using the previous package. Existing boot or higher-tier deployments use their original deployment procedure. For future releases, maintainers set the package version and push the matching `vX.Y.Z` tag. The Windows tests gate publication of the ZIP and checksum. Running the workflow manually on a branch runs verification only.
 

@@ -1,4 +1,4 @@
-# rig-gateway operator guide
+# Windows Rig MCP operator guide
 
 [English home](../README.en.md) · [简体中文](operations.md) · [AI acceptance prompt](ai-connect.en.md)
 

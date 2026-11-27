@@ -7,13 +7,13 @@
 ## 从零接入
 
 ```text
-请从零完成 rig-gateway 的首次接入，并用中文报告结果。目标是在我选定的 MCP 客户端里，从指定 Windows 目标机读回主机状态。按以下顺序执行可操作的步骤，默认只开放 Tier 1。从 https://github.com/ClimbHillTmr/rig-gateway 获取源码。
+请从零完成 rig-gateway 的首次接入，并用中文报告结果。目标是在我选定的 MCP 客户端里，从指定 Windows 目标机读回主机状态。按以下顺序执行可操作的步骤，默认只开放 Tier 1。从 https://github.com/ClimbHillTmr/windows-rig-mcp 获取源码。
 
 两台 Windows 电脑通过 Tailscale 接入 Codex 或 Claude Code 时，在目标机运行 Setup-Host.cmd，私下传递验收生成的 rig-connection.json，再在使用机运行 Setup-Client.cmd。交互登录和系统授权由使用者完成。读取两端结果并报告实际 URL、权限和客户端验收情况。其他传输、客户端或故障诊断按下列手动步骤处理。复用已有高权限实例前核对操作员授权。
 
 1. 确认两端。目标机运行网关，控制端运行 MCP 客户端，两者可以是同一台电脑。先从现有上下文确认目标机、已授权的操作通道、允许的安装目录、控制端和客户端名称。只询问缺少的信息。若你只能操作一端，把另一端当前需要执行的最小步骤交给我，拿到结果后继续。若通过 AweSun 上传，先关闭文件会话再开桌面会话。工业设备上的源码、虚拟环境及日志都放在指定工作目录内。
 
-2. 在目标机准备环境。在 PowerShell 运行 [Environment]::MachineName，保存完整机名供最后比对。检查 python --version，需要 Python 3.10 或更新版本；缺少时用获准的 Python 安装方式补齐，再检查版本。优先复用版本明确的仓库目录。新安装可在获准的父目录运行 git clone https://github.com/ClimbHillTmr/rig-gateway.git；没有 Git 就取得同版本源码 ZIP，跨机传输时核对包的 SHA-256，再解压。记录提交号或包哈希。
+2. 在目标机准备环境。在 PowerShell 运行 [Environment]::MachineName，保存完整机名供最后比对。检查 python --version，需要 Python 3.10 或更新版本；缺少时用获准的 Python 安装方式补齐，再检查版本。优先复用版本明确的仓库目录。新安装可在获准的父目录运行 git clone https://github.com/ClimbHillTmr/windows-rig-mcp.git；没有 Git 就取得同版本源码 ZIP，跨机传输时核对包的 SHA-256，再解压。记录提交号或包哈希。
 
 3. 在目标机安装。在含 pyproject.toml 的源码根目录运行下列命令；若已有适用的 .venv，跳过第一行。每步确认成功再继续：
    python -m venv .venv

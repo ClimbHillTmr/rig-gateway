@@ -1,4 +1,4 @@
-# rig-gateway 的连接恢复与功能设计
+# Windows Rig MCP 的连接恢复与功能设计
 
 [中文首页](../README.md) · [English](reliability.en.md) · [操作手册](operations.md)
 

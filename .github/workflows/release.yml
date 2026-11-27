@@ -49,4 +49,4 @@ jobs:
           git archive --format=zip --prefix=rig-gateway/ -o "$archive" HEAD
           unzip -tq "$archive"
           (cd "$RUNNER_TEMP" && sha256sum rig-gateway-windows.zip > SHA256SUMS.txt)
-          gh release create "$TAG" "$archive" "$RUNNER_TEMP/SHA256SUMS.txt" --verify-tag --generate-notes --title "rig-gateway $TAG"
+          gh release create "$TAG" "$archive" "$RUNNER_TEMP/SHA256SUMS.txt" --verify-tag --generate-notes --title "Windows Rig MCP $TAG"

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rig-gateway"
 version = "0.1.0"
-description = "Self-hosted MCP server for a remote Windows machine over a tailnet - a drop-in replacement for vendor remote-desktop MCP servers"
+description = "Self-hosted MCP server for inspecting Windows test rigs over a private network, with opt-in screenshots and sandboxed file writes."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -27,6 +27,10 @@ dependencies = ["psutil>=5.9"]
 screen = ["pillow>=10.0", "pyautogui>=0.9.54"]
 mcp = ["mcp>=1.0"]
 all = ["pillow>=10.0", "pyautogui>=0.9.54", "mcp>=1.0"]
+
+[project.urls]
+Repository = "https://github.com/ClimbHillTmr/windows-rig-mcp"
+Releases = "https://github.com/ClimbHillTmr/windows-rig-mcp/releases"
 
 [project.scripts]
 rig-gateway = "rig_gateway.server:main"

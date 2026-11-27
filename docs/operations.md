@@ -1,4 +1,4 @@
-# rig-gateway 操作手册
+# Windows Rig MCP 操作手册
 
 [简体中文首页](../README.md) · [English](operations.en.md) · [AI 验收提示词](ai-connect.md)
 

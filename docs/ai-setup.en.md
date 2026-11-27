@@ -7,13 +7,13 @@ Copy the entire prompt into an AI that can operate the host and client computer.
 ## First-time setup
 
 ```text
-Set up rig-gateway from scratch and report in English. The goal is to read the intended Windows host’s status through my chosen MCP client. Carry out the steps below in order, using Tier 1 only. Use the source from https://github.com/ClimbHillTmr/rig-gateway
+Set up rig-gateway from scratch and report in English. The goal is to read the intended Windows host’s status through my chosen MCP client. Carry out the steps below in order, using Tier 1 only. Use the source from https://github.com/ClimbHillTmr/windows-rig-mcp
 
 For two Windows PCs using Tailscale, use Setup-Host.cmd on the host, then transfer the verified rig-connection.json privately and run Setup-Client.cmd on the client for Codex or Claude Code. Let the user complete sign-in and permission prompts. Read both results and report the deployed URL, tier and client verification. Use the manual steps below for a different transport/client or to diagnose a failed step. Reuse an existing higher-tier instance only with the operator’s explicit approval.
 
 1. Identify both ends. The Windows host runs the gateway and the client computer runs the MCP client. They may be the same machine. Use existing context to identify the host, authorized access channel, approved installation directory, client computer, and client application. Ask only for missing inputs. If you can operate just one side, give me the smallest required step on the other side and continue after I return the result. When uploading through AweSun, close the file session before opening the desktop session. On industrial equipment, keep source, virtual environments, and logs in the designated workspace.
 
-2. Prepare the host. In PowerShell run [Environment]::MachineName and save the full name for the identity check. Run python --version. Python 3.10 or later is required. If missing, use the approved Python installation method, then check the version again. Reuse a checkout of known revision if available. For a new checkout, run git clone https://github.com/ClimbHillTmr/rig-gateway.git in the approved parent directory. Without Git, obtain a source ZIP for the intended revision. For a transfer, compare the archive’s SHA-256 on both machines before extracting. Record the commit or archive hash.
+2. Prepare the host. In PowerShell run [Environment]::MachineName and save the full name for the identity check. Run python --version. Python 3.10 or later is required. If missing, use the approved Python installation method, then check the version again. Reuse a checkout of known revision if available. For a new checkout, run git clone https://github.com/ClimbHillTmr/windows-rig-mcp.git in the approved parent directory. Without Git, obtain a source ZIP for the intended revision. For a transfer, compare the archive’s SHA-256 on both machines before extracting. Record the commit or archive hash.
 
 3. Install on the host. In the source root containing pyproject.toml, run the following commands. Skip the first line if a suitable .venv already exists. Check each result before proceeding:
    python -m venv .venv

@@ -1,12 +1,14 @@
-# rig-gateway
+# Windows Rig MCP
 
 **简体中文** · [English](README.en.md)
 
-从 Codex 或 Claude Code 通过私网查看 Windows 真机的状态、进程和文件。**目标机**运行 MCP 网关，**使用机**运行 AI 客户端。两台 Windows 电脑各有一个双击入口。
+Windows Rig MCP 是一个自托管的 MCP 服务，让 Codex 和 Claude Code 通过私网连接 Windows 测试设备。默认只读，你可以让 AI 查看真机状态、列出进程、浏览目录和读取文件。需要截图或在指定沙箱内写入文件时，由操作员在目标机启用相应权限。
+
+网关运行在**目标机**，AI 客户端运行在**使用机**。两台电脑可通过 Tailscale 接入，各自双击一个部署入口。安装后的命令和 MCP 连接条目名均为 `rig-gateway`。
 
 ## 通过 Tailscale 一键接入
 
-在两台电脑上下载并完整解压[Windows 发布包](https://github.com/ClimbHillTmr/rig-gateway/releases/latest/download/rig-gateway-windows.zip)，或使用同一版本的 Git 检出。请长期保留目标机上的安装目录。首次安装需要网络；缺少依赖时脚本通过 Windows 包管理器 WinGet 安装。按窗口提示完成安装授权和 Tailscale 登录。
+在两台电脑上下载并完整解压[Windows 发布包](https://github.com/ClimbHillTmr/windows-rig-mcp/releases/latest/download/rig-gateway-windows.zip)，或使用同一版本的 Git 检出。请长期保留目标机上的安装目录。首次安装需要网络；缺少依赖时脚本通过 Windows 包管理器 WinGet 安装。按窗口提示完成安装授权和 Tailscale 登录。
 
 | 顺序 | 在哪里操作 | 双击仓库根目录中的文件 | 完成标志 |
 |---|---|---|---|
@@ -38,7 +40,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy/Setup-Windows.ps1 -Ro
 从零部署时，把下面这句复制给能操作目标机和使用机的 AI：
 
 ```text
-请读取 https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.md 并执行其中的从零接入提示词，完成目标机安装、使用机配置和只读连接验证，报告实际结果。
+请读取 https://github.com/ClimbHillTmr/windows-rig-mcp/blob/main/docs/ai-setup.md 并执行其中的从零接入提示词，完成目标机安装、使用机配置和只读连接验证，报告实际结果。
 ```
 
 仅验收已有连接时，使用[只读验收提示词](docs/ai-connect.md)，检查工具列表、主机名和沙箱。
@@ -69,7 +71,7 @@ python -m venv .venv
 
 遇到“刚修好又变回去”，按顺序核对目标机任务、导出的连接记录、客户端实际条目和共享配置管理器。主动迁移端口后，在目标机重新导出记录，同时更新管理器里对应服务的 URL，再运行使用机入口。Codex 支持核验后自动修复端口。Claude Code 若仍是旧 URL，需要更新用户条目，再用 `claude mcp get rig-gateway` 确认 `Connected`。
 
-从 [Releases](https://github.com/ClimbHillTmr/rig-gateway/releases) 下载指定版本的 ZIP 和 `SHA256SUMS.txt`，用 `(Get-FileHash .\rig-gateway-windows.zip -Algorithm SHA256).Hash` 对照摘要后解压。使用机可直接从新目录启动，选用可信的真机记录。目标机升级前保留原目录、任务、私有记录和回退版本。在第二个目录运行目标机入口会复用并验收已有任务，运行中的服务仍使用原安装包。
+从 [Releases](https://github.com/ClimbHillTmr/windows-rig-mcp/releases) 下载指定版本的 ZIP 和 `SHA256SUMS.txt`，用 `(Get-FileHash .\rig-gateway-windows.zip -Algorithm SHA256).Hash` 对照摘要后解压。使用机可直接从新目录启动，选用可信的真机记录。目标机升级前保留原目录、任务、私有记录和回退版本。在第二个目录运行目标机入口会复用并验收已有任务，运行中的服务仍使用原安装包。
 
 升级一键安装的 Tier 1 服务时，在维护窗口停止 `rig-gateway-user` 任务，用**已注册环境中的** `python.exe -m pip install "<新版本解压目录>[mcp]"` 安装，再用保留的记录运行目标机入口。回退时用上一版本包重复该流程。开机任务或高权限现场部署沿用原来的部署流程。维护者更新包版本并推送匹配的 `vX.Y.Z` 标签后，Windows 测试通过才会发布 ZIP 和摘要；在分支上手动运行 Action 可以单独验收。
 
