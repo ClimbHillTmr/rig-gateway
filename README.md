@@ -38,6 +38,20 @@ python -m venv .venv
 
 网关本身没有 HTTP 身份认证。远程连接时，请用私网访问控制规则限制哪些设备可以连接，或在网关前配置认证代理。从控制端运行验证器时，将 `--expect-hostname` 设为已知的**目标机名**。`([Environment]::MachineName)` 取的是运行命令的这台机器的名称。
 
+## 通过 Tailscale 连接
+
+**需要下载吗？** 在同一台电脑使用 stdio 或 `127.0.0.1`，或两台电脑已经能通过受信任的局域网或 VPN 互通时，可以直接使用 rig-gateway。若选择 Tailscale 直连，请在**运行网关的目标机**和**运行 MCP 客户端的每台控制电脑**上安装 Tailscale 并登录。已安装且在线的设备可以直接复用。只有目标机需要运行网关。[下载 Tailscale for Windows](https://tailscale.com/download/windows)
+
+| 谁需要连接？ | 怎么接入？ |
+|---|---|
+| 我自己的第二台电脑 | 在新电脑用自己的 Tailscale 账号登录，选择目标机所在的私网（tailnet）。随后在新电脑的 MCP 客户端填入同一个网关 URL。 |
+| 团队成员，各自使用自己的账号 | 管理员在 Tailscale 管理后台的 **Users** 页面邀请成员。成员用自己的账号接受邀请，在控制电脑上加入团队私网。管理员用访问规则限定可访问目标机及其网关 TCP 端口的成员。 |
+| 外部协作者，只需访问这一台目标机 | 管理员在 **Machines → 目标机 → Share** 发送单次邀请。对方在自己的私网接受共享后即可连接。双方的访问规则均需允许这次连接。 |
+
+**连接地址怎么填？** 在目标机运行 `tailscale ip -4` 获取它的 Tailscale IPv4。首次启动时，将该地址传给网关的 `--host`。如果已有实例监听此地址，直接复用。各控制端选择 **Streamable HTTP**，填写 `http://<目标机的Tailscale-IP>:<实际端口>/mcp`。`8099` 是默认值，部署时指定过 `--port` 就使用部署端口。最后从控制端运行上面的验证器，将 `--host`、`--port` 和 `--expect-hostname` 换成目标机的值。
+
+**多人权限怎么分？** Tailscale 规则决定哪些人或设备能访问某个端口。网关的工具级别由该实例的启动参数决定，能连接同一实例的用户会看到同一套工具。若团队成员只需查看状态，可在独立端口运行 Tier 1 实例，并将高权限实例的端口仅开放给操作员。[邀请成员与共享设备的区别](https://tailscale.com/docs/reference/inviting-vs-sharing) · [共享设备步骤](https://tailscale.com/docs/features/sharing)
+
 ## 工具与权限
 
 权限逐级累加。调整启动参数后，重启服务并重新连接。用验证器的 `--tier 1`、`--tier 2` 或 `--tier 3` 核对预期清单。

@@ -38,6 +38,20 @@ python -m venv .venv
 
 The gateway has no built-in HTTP authentication. For remote access, restrict which devices can connect through network access rules or put an authenticated proxy in front of the server. When running the verifier on the client machine, pass the **known Windows host name** to `--expect-hostname`. PowerShell evaluates `([Environment]::MachineName)` on the machine running the command.
 
+## Connect through Tailscale
+
+**Do I need to install it?** You can use rig-gateway directly over stdio or `127.0.0.1` on the same computer, or over a trusted LAN or VPN that already connects both machines. For a direct Tailscale connection, install Tailscale and sign in on **the Windows gateway host** and **each computer running an MCP client**. Devices already online in Tailscale are ready to use. Only the host needs to run the gateway. [Download Tailscale for Windows](https://tailscale.com/download/windows)
+
+| Who needs access? | How to connect |
+|---|---|
+| My second computer | Sign in to Tailscale with your own account on the new computer and select the host’s private network (tailnet). Enter the same gateway URL in the new computer’s MCP client. |
+| Teammates with their own accounts | An admin invites members from **Users** in the Tailscale admin console. Each member accepts with their own account and joins the team tailnet on their client computer. Use access rules to limit which members can reach the host on the gateway’s TCP port. |
+| An external collaborator who needs only this host | An admin sends a single-use invitation from **Machines → select the host → Share**. The recipient accepts the share in their own tailnet. Both tailnets’ access rules must allow the connection. |
+
+**Which URL do I use?** Run `tailscale ip -4` on the host to get its Tailscale IPv4 address. On first startup, pass that address to the gateway’s `--host` flag. If the gateway is already listening there, reuse it. On each client, select **Streamable HTTP** and enter `http://<host-tailscale-ip>:<actual-port>/mcp`. The default port is `8099`. Use the deployed `--port` value if it differs. Run the verifier above from the client with the host’s address, port, and expected hostname.
+
+**How do permissions work for multiple users?** Tailscale rules control which users or devices can reach a port. Each gateway instance exposes the tool tier selected at startup to everyone who can connect to it. To give colleagues read-only access, run a Tier 1 instance on a separate port and grant access to the higher-tier port only to operators. [Inviting users vs. sharing a device](https://tailscale.com/docs/reference/inviting-vs-sharing) · [Device sharing instructions](https://tailscale.com/docs/features/sharing)
+
 ## Tools and permissions
 
 Each tier includes the tiers below it. After changing the startup flags, restart the server, reconnect the client, and check the expected inventory with `--tier 1`, `--tier 2`, or `--tier 3` on the verifier.
