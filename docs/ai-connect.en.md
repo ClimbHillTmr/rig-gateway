@@ -2,7 +2,7 @@
 
 [English home](../README.en.md) · [简体中文](ai-connect.md) · [Operator guide](operations.en.md)
 
-Use an AI client that can call MCP tools or run Python locally. If the gateway is already configured, copy the prompt below. For a new connection, supply the private address, deployed port, expected tier, and independently confirmed Windows hostname if known.
+For a running gateway, copy the prompt below into an AI that can call MCP tools or run Python locally. If the host or client still needs setup, use the [first-time setup prompt](ai-setup.en.md).
 
 ## First connection check
 
