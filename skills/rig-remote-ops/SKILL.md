@@ -43,6 +43,8 @@ python .\scripts\verify_endpoint.py --host $gatewayIP --port $gatewayPort --auth
 
 Use `--auth none` for the gateway’s unauthenticated endpoint. The verifier sends no bearer token in this mode. Use the configured client for HTTPS or mTLS. The verifier also supports a bearer-authenticated HTTP service with `--auth required` and the older `--profile vendor` naming. Keep credentials out of commands, logs, and the repository.
 
+For Codex, pass `--codex-entry NAME` to compare the effective entry with the expected direct HTTP endpoint before probing. With `--connect-attempts 3`, transient failures during the initial TCP connection are retried twice. If the entry differs, verify the recorded deployment independently. A repair request for that same instance can then update its local URL while preserving other settings. Establish a new client session and verify again. [Recovery procedure and design](../../docs/reliability.en.md)
+
 ## Use authorized tools
 
 - Read paths use the service account’s permissions. File-tool mutations require a configured `RIG_SANDBOX_ROOT`. Use absolute paths and check the current `policy.sandbox_root` before writing.

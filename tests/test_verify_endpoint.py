@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import contextlib
+import importlib.util
+import io
 import os
 import socket
 import subprocess
@@ -9,6 +12,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -161,6 +165,35 @@ def run_verifier(port: int, *extra: str) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
+class CodexEntryTests(unittest.TestCase):
+    def test_effective_entry_is_checked_without_contacting_the_configured_url(self):
+        spec = importlib.util.spec_from_file_location("verify_endpoint", VERIFIER)
+        verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(verifier)
+        cases = [
+            ("http://127.0.0.1:8123/mcp", True, True),
+            ("http://127.0.0.1:8124/mcp", True, False),
+            ("http://127.0.0.1:8123/mcp", False, False),
+            ("https://127.0.0.1:8123/mcp", True, False),
+            ("http://other-host:8123/mcp", True, False),
+            ("http://127.0.0.1:8123/mcp?token=private-value", True, False),
+        ]
+        for url, enabled, expected in cases:
+            with self.subTest(url=url, enabled=enabled):
+                entry = {"enabled": enabled, "transport": {"type": "streamable_http", "url": url}}
+                reply = subprocess.CompletedProcess([], 0, stdout=json.dumps(entry).encode())
+                output = io.StringIO()
+                with patch.object(verifier.subprocess, "run", return_value=reply) as get_entry:
+                    with contextlib.redirect_stdout(output):
+                        if expected:
+                            verifier.check_codex_entry("rig-test", "127.0.0.1", 8123)
+                        else:
+                            with self.assertRaises(SystemExit):
+                                verifier.check_codex_entry("rig-test", "127.0.0.1", 8123)
+                self.assertEqual(get_entry.call_args.args[0], ["codex", "mcp", "get", "rig-test", "--json"])
+                self.assertNotIn("private-value", output.getvalue())
+
+
 class VerifierTests(unittest.TestCase):
     """The vendor profile, kept because that naming is still in the field."""
 
@@ -189,6 +222,24 @@ class VerifierTests(unittest.TestCase):
     def test_unreachable_host_fails(self):
         rc, _ = run_verifier(free_port(), "--profile", "vendor")
         self.assertNotEqual(rc, 0)
+
+    def test_retry_recovers_when_listener_starts_late(self):
+        port = free_port()
+        self._servers.append(spawn("import time; time.sleep(1.5)\n" + RIG_MCP, port))
+        rc, out = run_verifier(port, "--auth", "none", "--timeout", "0.5", "--connect-attempts", "3")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("[retry] tcp", out)
+        self.assertIn("inventory is exactly", out)
+
+    def test_rejected_initialized_notification_stops_verification(self):
+        server = RIG_MCP.replace('elif m == "tools/list":',
+                                 'elif m == "notifications/initialized": self._send({}, 503)\n'
+                                 '        elif m == "tools/list":')
+        port = self._serve(server)
+        rc, out = run_verifier(port, "--auth", "none", "--connect-attempts", "3")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("notifications/initialized: HTTP 503", out)
+        self.assertNotIn("[retry]", out)
 
     def test_starved_listener_is_rejected(self):
         """The regression guard: a socket that accepts but never answers must FAIL."""

@@ -11,6 +11,12 @@
 | 想从第二台电脑或同事的账号连接 | [通过 Tailscale 连接](#通过-tailscale-连接) |
 | 需要部署、重启或诊断故障 | [操作手册](docs/operations.md) |
 
+**首次安装时，复制这句话给 AI：**
+
+```text
+请读取 https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.md 并执行其中的「从零接入」提示词，完成目标机安装、控制端配置和只读连接验证，再报告实测结果。
+```
+
 如果客户端已经连好，可以直接发给 AI：
 
 > 请列出 rig-gateway 的完整工具清单，调用 `system_info` 和 `host_status`，报告主机名、工具数和沙箱路径。只执行只读检查。
@@ -60,6 +66,8 @@ python -m venv .venv
 ## 连接故障
 
 如果本机通过、远程失败，先核对绑定地址和实际端口，再按验证器第一个失败的步骤定位原因。[按现象排障](docs/operations.md#故障排查)
+
+Codex 用户可在验证命令中加 `--codex-entry rig-gateway` 比对客户端和部署端口。加 `--connect-attempts 3` 可在首次 TCP 连接暂时失败时退避重试。[连接恢复与 MCP 功能设计](docs/reliability.md)
 
 ## 开发与许可
 

@@ -11,6 +11,12 @@ Give an AI client read-only access to a Windows host’s status, processes, and 
 | Another computer or a colleague’s account | [Connect through Tailscale](#connect-through-tailscale) |
 | A deployment to maintain or a connection that fails | [Operator guide](docs/operations.en.md) |
 
+**For a first installation, copy this sentence into your AI client:**
+
+```text
+Read https://github.com/ClimbHillTmr/rig-gateway/blob/main/docs/ai-setup.en.md and execute the “First-time setup” prompt to install the gateway on the host, configure my client, and report the results of the read-only connection checks.
+```
+
 If your client is already connected, send it this prompt:
 
 > List the configured rig-gateway tools. Call `system_info` and `host_status`, then report the observed hostname, tool count, and sandbox path. Use read-only checks throughout.
@@ -60,6 +66,8 @@ The default instance advertises **5 read-only tools**. `--enable-tier2` advertis
 ## Troubleshooting
 
 If the local check passes but the remote client fails, compare the bind address and deployed port first. Use the first failed verifier step to narrow down the cause. [Troubleshooting by symptom](docs/operations.en.md#troubleshooting)
+
+For Codex, add `--codex-entry rig-gateway` to compare the effective client entry with the deployment. Add `--connect-attempts 3` for bounded retries of the initial TCP connection. [Connection recovery and MCP feature design](docs/reliability.en.md)
 
 ## Development and license
 

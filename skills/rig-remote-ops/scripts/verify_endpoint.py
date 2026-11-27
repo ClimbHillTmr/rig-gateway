@@ -33,7 +33,10 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
+import time
+from urllib.parse import urlsplit
 
 # Servers that wrap tools in a task manager prepend a run id to text results.
 TASK_PREFIX = re.compile(r"^\[task:[0-9a-f]{12}\] ")
@@ -48,13 +51,40 @@ def ok(step: str, detail: str) -> None:
     print(f"[ ok ] {step}: {detail}")
 
 
-def tcp_check(host: str, port: int, timeout: float) -> None:
-    """A listening socket proves a listener exists. It proves nothing about HTTP."""
+def check_codex_entry(name: str, host: str, port: int) -> None:
+    """Compare effective client settings before contacting the deployment endpoint."""
     try:
-        with socket.create_connection((host, port), timeout=timeout):
-            ok("tcp", f"{host}:{port} accepted a connection")
-    except OSError as exc:
-        die("tcp", f"{host}:{port} unreachable: {exc}")
+        proc = subprocess.run(["codex", "mcp", "get", name, "--json"],
+                              capture_output=True, timeout=10, check=True)
+        entry = json.loads(proc.stdout)
+        transport = entry["transport"]
+        if not entry["enabled"] or transport["type"] != "streamable_http":
+            die("client-config", "expected an enabled Streamable HTTP entry")
+        url = urlsplit(transport["url"])
+        actual_port = url.port if url.port is not None else 80
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
+        die("client-config", "cannot read the named entry; check codex mcp get locally")
+    # Configured URLs and headers may contain credentials. Never print them here.
+    if (url.scheme != "http" or url.hostname != host.casefold() or url.path != "/mcp"
+            or url.username is not None or url.password is not None or url.query or url.fragment):
+        die("client-config", "entry differs from the intended direct HTTP host or /mcp path")
+    if actual_port != port:
+        die("client-config", f"configured port {actual_port}, deployment port {port}")
+    ok("client-config", "enabled Codex entry matches the deployment endpoint")
+
+
+def tcp_check(host: str, port: int, timeout: float, attempts: int = 1) -> None:
+    """A listening socket proves a listener exists. It proves nothing about HTTP."""
+    for attempt in range(1, attempts + 1):
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                ok("tcp", f"{host}:{port} accepted a connection")
+            break
+        except OSError as exc:
+            if attempt == attempts:
+                die("tcp", f"{host}:{port} unreachable: {exc}")
+            print(f"[retry] tcp: attempt {attempt} failed; retrying in {attempt}s")
+            time.sleep(attempt)
     print("       note: a TCP connect does not prove the server answers HTTP.")
 
 
@@ -137,7 +167,9 @@ class Mcp:
             self.headers["Mcp-Session-Id"] = self.session
         if self.protocol:
             self.headers["MCP-Protocol-Version"] = self.protocol
-        self._post("/mcp", {"jsonrpc": "2.0", "method": method, "params": {}})
+        status, _ = self._post("/mcp", {"jsonrpc": "2.0", "method": method, "params": {}})
+        if status not in (200, 202):
+            die(method, f"HTTP {status}")
 
     def call(self, name: str, arguments: dict) -> str:
         res = self.rpc("tools/call", {"name": name, "arguments": arguments})
@@ -242,6 +274,10 @@ def main() -> None:
     ap.add_argument("--host", required=True)
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument("--timeout", type=float, default=20.0)
+    ap.add_argument("--codex-entry", metavar="NAME",
+                    help="first check that the effective Codex entry matches this direct HTTP endpoint")
+    ap.add_argument("--connect-attempts", type=int, choices=(1, 2, 3), default=1,
+                    help="bounded attempts for initial TCP connection only (default: 1)")
     ap.add_argument("--auth", default="required", choices=["required", "none", "auto"],
                     help="required: expect 401/403 unauthenticated. none: rig-gateway's "
                          "documented default (no built-in auth). auto: accept either, "
@@ -283,7 +319,9 @@ def main() -> None:
     # RIG_TOKEN is ours. WINREMOTE_RIG_TOKEN is borrowed from winremote-mcp
     # (dddabtc/winremote-mcp, MIT) and is kept only so the verifier can still drive a
     # server you have not replaced yet; it will be dropped once nothing needs it.
-    tcp_check(args.host, args.port, min(args.timeout, 8))
+    if args.codex_entry:
+        check_codex_entry(args.codex_entry, args.host, args.port)
+    tcp_check(args.host, args.port, min(args.timeout, 8), args.connect_attempts)
 
     # A live app answers. Any HTTP status proves that -- the check is that we got
     # a response at all, not which one.
