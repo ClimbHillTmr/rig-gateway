@@ -10,6 +10,7 @@ Give an AI client read-only access to a Windows host’s status, processes, and 
 | An MCP client already configured for this host | [Give the AI a read-only connection check](docs/ai-connect.en.md) |
 | Another computer or a colleague’s account | [Connect through Tailscale](#connect-through-tailscale) |
 | A deployment to maintain or a connection that fails | [Operator guide](docs/operations.en.md) |
+| Operate an existing gateway on the Windows host | [Open the host control panel](docs/operations.en.md#windows-operator-panel) |
 
 **For a first installation, copy this sentence into your AI client:**
 

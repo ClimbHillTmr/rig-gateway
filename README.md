@@ -10,6 +10,7 @@
 | MCP 客户端已经配置了目标机 | [让 AI 验收现有连接](docs/ai-connect.md) |
 | 想从第二台电脑或同事的账号连接 | [通过 Tailscale 连接](#通过-tailscale-连接) |
 | 需要部署、重启或诊断故障 | [操作手册](docs/operations.md) |
+| 在真机上启动网关、连接 Tailscale 或设置开机启动 | [打开真机操作面板](docs/operations.md#真机操作面板) |
 
 **首次安装时，复制这句话给 AI：**
 

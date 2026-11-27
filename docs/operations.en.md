@@ -4,6 +4,14 @@
 
 The **host** runs the Windows gateway. The **client computer** runs the MCP client. When handing over a deployment, record the Windows hostname, bind IP, TCP port, expected tier, and approved write directory. The hostname identifies the machine. The IP and port identify the endpoint. Use those recorded settings when connecting to an existing instance.
 
+## Windows operator panel
+
+On the host, keep the three files in [operator-panel](../deploy/operator-panel) together and double-click `Open-Panel.cmd`. The panel reads the existing root-level `rig-gateway` boot task (PowerShell running `Run-Task.ps1` with the deployed address, port and tier). On a foreground-only installation the gateway controls are unavailable.
+
+- **启动连接** starts the registered gateway task. The panel shows the saved URL, task state and listener. After starting, refresh the status and verify MCP from the client.
+- **启动 Tailscale** starts the installed Windows service if needed and requests a connection. Complete any sign-in on the host. Tailscale is optional for loopback or a reachable trusted LAN/VPN address. A gateway bound only to its Tailscale IP needs that network for its current URL.
+- **启用 / 关闭开机启动** changes the existing boot trigger. The panel also shows whether a matching login task will start the gateway when someone signs in. Changing the boot trigger requires task-management permission. Opening the panel only reads status.
+
 ## Remote access
 
 1. **Choose the network.** Use loopback on the host or the host’s private address on a trusted LAN or VPN. For Tailscale, sign in on the host and each client computer. Use your own account and tailnet for your devices, invite teammates through **Users**, or share the individual host with an external collaborator through **Machines → select the host → Share**. Restrict access to the host’s gateway TCP port through network policy. [Inviting vs. sharing](https://tailscale.com/docs/reference/inviting-vs-sharing) · [Sharing steps and required roles](https://tailscale.com/docs/features/sharing)
