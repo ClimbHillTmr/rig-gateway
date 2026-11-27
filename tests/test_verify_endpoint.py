@@ -111,6 +111,8 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers(); self.wfile.write(body)
     def do_POST(self):
+        if self.headers.get("Authorization"):
+            self._send({"error": "unexpected credentials"}, 403); return
         n = int(self.headers.get("Content-Length") or 0)
         msg = json.loads(self.rfile.read(n) or b"{}")
         m, i = msg.get("method"), msg.get("id")
@@ -122,7 +124,7 @@ class H(BaseHTTPRequestHandler):
         elif m == "tools/call":
             name = msg["params"]["name"]
             if name == "system_info":
-                payload = {"system": "Windows 11 (AMD64)", "hostname": "RIG-FAKE"}
+                payload = {"system": "Windows 11 (AMD64)", "hostname": "RIG-FAKE", "sandbox_root": "(unset)"}
             elif name == "read_file":
                 payload = MARKER
             else:
@@ -276,12 +278,19 @@ class RigGatewayProfileTests(unittest.TestCase):
         self.assertEqual(rc, 0, f"rig-gateway profile rejected its own server:\n{out}")
         for step in ("tcp", "liveness", "initialize", "tools/list", "system_info"):
             self.assertIn(step, out)
+        self.assertIn('"hostname": "RIG-FAKE"', out)
+        self.assertIn('"sandbox_root": "(unset)"', out)
 
     def test_no_auth_server_fails_with_auth_required(self):
         """Asking for auth that is not there must not pass silently."""
         rc, out = run_verifier(self.port, "--auth", "required")
         self.assertNotEqual(rc, 0)
         self.assertIn("liveness", out)
+
+    def test_hostname_must_match_the_complete_field(self):
+        rc, out = run_verifier(self.port, "--auth", "none", "--expect-hostname", "RIG")
+        self.assertNotEqual(rc, 0, out)
+        self.assertIn("[FAIL] identity", out)
 
     def test_marker_read_uses_the_rig_gateway_tool_name(self):
         rc, out = run_verifier(self.port, "--auth", "none",

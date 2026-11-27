@@ -1,5 +1,7 @@
 # rig-gateway
 
+**用 AI 连接设备** · 打开[首次连接验收提示词](docs/ai-connect.md)，复制到 MCP 客户端，或让 AI 直接读取该页并执行。它会核对目标主机、可用工具和沙箱路径。
+
 A self-hosted MCP server that exposes a remote Windows machine to an AI agent, over a
 private tailnet. **Built as a drop-in replacement for vendor remote-desktop MCP servers**
 (AweSun / 向日葵, AnyDesk, TeamViewer and friends) on machines where you cannot accept a

@@ -64,10 +64,11 @@ class Mcp:
         self.session: str | None = None
         self.protocol: str | None = None
         self.headers = {
-            "Authorization": "Bearer " + key,
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
+        if key:
+            self.headers["Authorization"] = "Bearer " + key
         self._id = 0
 
     def _post(self, path: str, body: dict) -> tuple[int, str]:
@@ -225,6 +226,9 @@ def probe_liveness(host: str, port: int, path: str, timeout: float,
 
 
 RIG_GATEWAY_TOOLS = "host_status,system_info,list_processes,list_directory,read_file"
+RIG_TIER2_TOOLS = (RIG_GATEWAY_TOOLS + ",capture_screen,write_file,make_directory,"
+                   "move_path,delete_path,transfer_in,transfer_out")
+RIG_TIER3_TOOLS = RIG_TIER2_TOOLS + ",run_command,type_text,press_keys"
 RIG_GATEWAY_READ_TOOL = "read_file"
 
 # "Connected, then dropped without a byte." 10054 is WSAECONNRESET, 10053 is
@@ -245,7 +249,10 @@ def main() -> None:
     ap.add_argument("--profile", default="rig-gateway", choices=["rig-gateway", "vendor"],
                     help="which tool naming to expect; 'vendor' is the older "
                          "GetSystemInfo/FileRead naming")
-    ap.add_argument("--expect-tools", default=None,
+    inventory = ap.add_mutually_exclusive_group()
+    inventory.add_argument("--tier", type=int, choices=(1, 2, 3),
+                           help="expected rig-gateway tier (default: 1)")
+    inventory.add_argument("--expect-tools", default=None,
                     help="exact allowlist, comma-separated; defaults to the profile's tier-1 set")
     ap.add_argument("--call-tool", default=None,
                     help="read-only tier-1 tool to call for the live check; defaults per profile")
@@ -262,10 +269,13 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.profile == "rig-gateway":
-        args.expect_tools = args.expect_tools or RIG_GATEWAY_TOOLS
+        tiers = {1: RIG_GATEWAY_TOOLS, 2: RIG_TIER2_TOOLS, 3: RIG_TIER3_TOOLS}
+        args.expect_tools = args.expect_tools or tiers[args.tier or 1]
         args.call_tool = args.call_tool or "system_info"
         args.marker_tool = args.marker_tool or RIG_GATEWAY_READ_TOOL
     else:
+        if args.tier:
+            ap.error("--tier applies only to the rig-gateway profile")
         args.expect_tools = args.expect_tools or "GetSystemInfo,ListProcesses,FileList,FileRead"
         args.call_tool = args.call_tool or "GetSystemInfo"
         args.marker_tool = args.marker_tool or "FileRead"
@@ -273,17 +283,6 @@ def main() -> None:
     # RIG_TOKEN is ours. WINREMOTE_RIG_TOKEN is borrowed from winremote-mcp
     # (dddabtc/winremote-mcp, MIT) and is kept only so the verifier can still drive a
     # server you have not replaced yet; it will be dropped once nothing needs it.
-    key = os.environ.get("RIG_TOKEN") or os.environ.get("WINREMOTE_RIG_TOKEN") or ""
-    if args.auth == "none":
-        if key:
-            print("[note] --auth none but a token is set; it will still be sent.")
-        key = key or "no-auth-configured"
-    else:
-        if not key:
-            key = getpass.getpass("API key (hidden): ")
-        if len(key) < 32 or any(c.isspace() for c in key):
-            die("input", "key must be >=32 characters with no whitespace")
-
     tcp_check(args.host, args.port, min(args.timeout, 8))
 
     # A live app answers. Any HTTP status proves that -- the check is that we got
@@ -319,6 +318,12 @@ def main() -> None:
         ok("liveness", f"app answers; unauthenticated request returned HTTP {status} "
                        "(no auth in force -- rig-gateway's default)")
 
+    key = ""
+    if status in (401, 403):
+        key = (os.environ.get("RIG_TOKEN") or os.environ.get("WINREMOTE_RIG_TOKEN")
+               or getpass.getpass("API key (hidden): "))
+        if len(key) < 32 or any(c.isspace() for c in key):
+            die("input", "key must be >=32 characters with no whitespace")
     mcp = Mcp(args.host, args.port, key, args.timeout)
     init = mcp.rpc("initialize", {"protocolVersion": "2025-03-26", "capabilities": {},
                                  "clientInfo": {"name": "verify-endpoint", "version": "1.0"}})
@@ -344,9 +349,27 @@ def main() -> None:
         die(args.call_tool, f"response did not contain {args.expect_in_text!r}: {info[:400]!r}")
     ok(args.call_tool, "returned live data")
 
+    hostname = None
+    if args.profile == "rig-gateway" and args.call_tool == "system_info":
+        try:
+            fields = json.loads(info)
+        except ValueError:
+            fields = None
+        if isinstance(fields, dict):
+            hostname = fields.get("hostname")
+            observed = {k: fields[k] for k in ("hostname", "sandbox_root") if k in fields}
+            if observed:
+                print("       system_info: " + json.dumps(observed))
+
     if args.expect_hostname:
         # Only meaningful if the tool really reports it; otherwise omit the flag.
-        if args.expect_hostname.upper() not in info.upper():
+        if args.profile == "rig-gateway" and args.call_tool == "system_info":
+            if not isinstance(hostname, str):
+                die("identity", "system_info did not return a hostname field")
+            matched = hostname.casefold() == args.expect_hostname.casefold()
+        else:
+            matched = args.expect_hostname.upper() in info.upper()
+        if not matched:
             die("identity", f"{args.call_tool} does not expose that hostname; "
                             "use --expect-marker-file")
         ok("identity", "hostname confirmed from tool output")
@@ -362,7 +385,7 @@ def main() -> None:
         print("[warn] identity NOT verified: pass --expect-marker-file (recommended) or "
               "--expect-hostname if the tool really reports one")
     print("\nEndpoint is verified. Tools execute; inventory matches.")
-    if args.auth == "none":
+    if not key:
         print("NOTE: auth was NOT verified -- none is configured. That is rig-gateway's "
               "documented default; restrict access with tailnet ACLs or a reverse proxy.")
 
