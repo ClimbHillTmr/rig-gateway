@@ -26,6 +26,17 @@ def settings(record):
     return argparse.Namespace(host=host, port=port, tier=tier, expect_hostname=name, codex_entry="rig-gateway")
 
 
+def reinstall_port(record, host, hostname):
+    prior = settings(record)
+    if str(prior.host) != host or prior.expect_hostname.casefold() != hostname.casefold():
+        raise ValueError("The saved record belongs to a different host. Select the intended -Record.")
+    if prior.tier != 1:
+        raise ValueError("The recorded higher-tier task is missing. Restore its original deployment.")
+    if prior.port < 1024:
+        raise ValueError("The recorded port is outside the one-click host installation range.")
+    return prior.port
+
+
 def inventory(args):
     return (RIG_GATEWAY_TOOLS, RIG_TIER2_TOOLS, RIG_TIER3_TOOLS)[args.tier - 1].split(",")
 
@@ -89,6 +100,9 @@ def main():
     export.add_argument("port", type=int)
     export.add_argument("tier", type=int)
     export.add_argument("hostname")
+    saved = commands.add_parser("saved-port")
+    saved.add_argument("host")
+    saved.add_argument("hostname")
     commands.add_parser("Codex")
     commands.add_parser("Claude")
     options = parser.parse_args()
@@ -96,6 +110,9 @@ def main():
         export_record(options.record, settings(vars(options)))
         return
     record = json.loads(options.record.read_text(encoding="utf-8-sig"))
+    if options.mode == "saved-port":
+        print(reinstall_port(record, options.host, options.hostname))
+        return
     args = settings(record)
     args.expect_sandbox = record["sandbox"]
     check_endpoint(args, inventory(args))

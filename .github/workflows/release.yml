@@ -1,0 +1,52 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime and test dependencies
+        run: python -m pip install ".[mcp]" pytest
+      - name: Run Python regression tests
+        run: python -m pytest tests -q
+      - name: Exercise Windows panel controls
+        run: powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File tests/test_operator_panel.ps1
+
+  publish:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag, package tracked files and publish
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re, tomllib
+          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version) or os.environ["TAG"] != f"v{version}":
+              raise SystemExit("The release tag must match the version in pyproject.toml.")
+          PY
+          archive="$RUNNER_TEMP/rig-gateway-windows.zip"
+          git archive --format=zip --prefix=rig-gateway/ -o "$archive" HEAD
+          unzip -tq "$archive"
+          (cd "$RUNNER_TEMP" && sha256sum rig-gateway-windows.zip > SHA256SUMS.txt)
+          gh release create "$TAG" "$archive" "$RUNNER_TEMP/SHA256SUMS.txt" --verify-tag --generate-notes --title "rig-gateway $TAG"

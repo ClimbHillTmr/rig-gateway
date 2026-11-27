@@ -6,7 +6,7 @@ Connect Codex or Claude Code to a Windows machine to inspect its status, process
 
 ## One-click setup over Tailscale
 
-Download and extract the [source ZIP](https://github.com/ClimbHillTmr/rig-gateway/archive/refs/heads/main.zip) on both Windows PCs, or check out the same Git revision. Keep the host folder in its permanent location. First-time setup needs network access and uses WinGet for missing software. Complete any Windows installation prompts and sign in to Tailscale when asked.
+Download and extract the [Windows release ZIP](https://github.com/ClimbHillTmr/rig-gateway/releases/latest/download/rig-gateway-windows.zip) on both Windows PCs, or check out the same Git revision. Keep the host folder in its permanent location. First-time setup needs network access and uses WinGet for missing software. Complete any Windows installation prompts and sign in to Tailscale when asked.
 
 | Order | Computer | Double-click in the repository root | Successful result |
 |---|---|---|---|
@@ -62,6 +62,16 @@ Keep the window open and use `http://127.0.0.1:8099/mcp` in the local client. Fo
 | Local access succeeds but the remote client fails | Check sign-in, invitations or sharing, port access policy and the actual listener. [Troubleshooting by symptom](docs/operations.en.md#troubleshooting) |
 | The gateway changed port | Generate a fresh host record. Codex can verify identity and permissions and repair its local URL. Claude Code reports a conflicting URL for inspection. [Codex port repair](docs/reliability.en.md#repair-a-changed-codex-port) |
 | The operator needs screenshots, file writes or input | Tier 1 offers 5 read-only tools, Tier 2 offers 12 and Tier 3 offers 15. Command execution and input also require explicit host authorization. Gateway HTTP has no built-in authentication. Limit access using private network policy. [Permissions and sandbox](docs/operations.en.md) |
+
+## Ports and updates
+
+The installed task owns the port. With no task, host setup reuses the port in a matching Tier 1 record before falling back to `8099` for a new installation. An explicit `-Port` applies to a new task. A conflict with an existing task or an occupied port stops setup. A missing higher-tier task requires its original deployment.
+
+If an address works and later reverts, compare the task, the exported record, the effective client entry and any shared configuration manager. After a deliberate port change, run host setup to export a fresh record, update the manager’s named server URL and rerun client setup. Codex supports verified port repair. For Claude Code, update the user entry if it still has the old URL, then check `claude mcp get rig-gateway` for `Connected`.
+
+Download a specific version and `SHA256SUMS.txt` from [Releases](https://github.com/ClimbHillTmr/rig-gateway/releases). Compare `(Get-FileHash .\rig-gateway-windows.zip -Algorithm SHA256).Hash` with the listed digest before extracting. On the client, run the new launcher with the trusted host record. On the host, keep the original directory, task, private record and rollback package. Running setup from a second folder reuses the existing task and verifies its endpoint; the installed service still runs its original package.
+
+To upgrade a one-click Tier 1 service during maintenance, stop its `rig-gateway-user` task, install the new extracted source with the **registered environment’s** `python.exe -m pip install "<new-source-directory>[mcp]"` and run host setup with the retained record. To roll back, repeat using the previous package. Existing boot or higher-tier deployments use their original deployment procedure. For future releases, maintainers set the package version and push the matching `vX.Y.Z` tag. The Windows tests gate publication of the ZIP and checksum. Running the workflow manually on a branch runs verification only.
 
 ## Development and license
 

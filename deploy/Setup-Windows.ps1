@@ -78,6 +78,11 @@ try {
 
     $installed = Get-ScheduledTask -TaskPath '\' | Where-Object TaskName -in 'rig-gateway','rig-gateway-user'
     if (-not $installed) {
+        if (Test-Path -LiteralPath $Record -PathType Leaf) {
+            $savedPort = & $python $helper $Record saved-port $ip ([Environment]::MachineName)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot reuse the saved host deployment.' }
+            if (-not $PSBoundParameters.ContainsKey('Port')) { $Port = [int]$savedPort }
+        }
         if (Get-NetTCPConnection -State Listen | Where-Object LocalPort -eq $Port) {
             throw "Port $Port is occupied. Select a free -Port or verify the existing deployment."
         }
@@ -96,6 +101,9 @@ try {
         Register-ScheduledTask -TaskName 'rig-gateway-user' -TaskPath '\' -Description 'rig-gateway one-click Tier 1' -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
     }
     $deployment = & $panel -Describe
+    if ($PSBoundParameters.ContainsKey('Port') -and $deployment.Port -ne $Port) {
+        throw "Installed task uses port $($deployment.Port), requested $Port. Rerun without -Port to use the installed endpoint."
+    }
     if ($deployment.Address -ne $ip) { throw 'Existing task binds another address. Check it in the operator panel.' }
     $listeners = @(Get-NetTCPConnection -State Listen | Where-Object LocalPort -eq $deployment.Port)
     if (-not $listeners.Count -and $deployment.Task.State -ne 'Running') {
