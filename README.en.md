@@ -67,7 +67,7 @@ The default instance advertises **5 read-only tools**. `--enable-tier2` advertis
 
 If the local check passes but the remote client fails, compare the bind address and deployed port first. Use the first failed verifier step to narrow down the cause. [Troubleshooting by symptom](docs/operations.en.md#troubleshooting)
 
-For Codex, add `--codex-entry rig-gateway` to compare the effective client entry with the deployment. Add `--connect-attempts 3` for bounded retries of the initial TCP connection. [Connection recovery and MCP feature design](docs/reliability.en.md)
+If the gateway port changed, run the client-side repair command. It verifies the host and permissions, updates the local Codex URL, and opens a fresh connection. [Repair a changed Codex port](docs/reliability.en.md#repair-a-changed-codex-port)
 
 ## Development and license
 

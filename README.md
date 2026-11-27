@@ -67,7 +67,7 @@ python -m venv .venv
 
 如果本机通过、远程失败，先核对绑定地址和实际端口，再按验证器第一个失败的步骤定位原因。[按现象排障](docs/operations.md#故障排查)
 
-Codex 用户可在验证命令中加 `--codex-entry rig-gateway` 比对客户端和部署端口。加 `--connect-attempts 3` 可在首次 TCP 连接暂时失败时退避重试。[连接恢复与 MCP 功能设计](docs/reliability.md)
+网关换了端口时，在控制端运行自动修复命令。它会核对目标机身份和权限，更新本地 Codex 条目的 URL，并建立新连接验收。[自动修复 Codex 端口](docs/reliability.md#自动修复-codex-端口)
 
 ## 开发与许可
 

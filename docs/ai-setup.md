@@ -29,7 +29,8 @@
 
 6. 从控制端验证。对于直连 HTTP，若控制端有 Python 和仓库脚本，从控制端仓库根目录运行下面的独立检查。先在控制端设置 $gatewayIP、$gatewayPort 和 $expectedName；机名使用第 2 步在目标机读到的值。HTTPS 或认证代理使用已配置的客户端。
    python skills/rig-remote-ops/scripts/verify_endpoint.py --host $gatewayIP --port $gatewayPort --auth none --tier 1 --expect-hostname $expectedName
-   对 Codex，再给上述命令加 --codex-entry $entryName --connect-attempts 3。若报告端口不一致，先独立验证部署端的主机名、级别和沙箱。确认是本次要配置的同一实例后，只更正本地条目的 URL，保留其他设置，再复验。若无法确认身份，报告差异。
+   若已有 Codex 条目的端口变化，从可信部署记录取得 $expectedSandbox（只读部署未配置写入根目录时填 unset），在控制端执行下面的命令并报告验收结果。
+   python skills/rig-remote-ops/scripts/repair_codex.py --codex-entry $entryName --host $gatewayIP --port $gatewayPort --expect-hostname $expectedName --tier 1 --expect-sandbox $expectedSandbox
    最后在第 5 步配置的客户端建立 MCP 会话，取得完整 tools/list。预期恰好有 host_status、system_info、list_processes、list_directory、read_file。实际调用 system_info 和 host_status，核对完整 hostname，并读取 policy.sandbox_root。只读实例的沙箱可为未配置。即使独立检查通过，也要记录所选客户端的实际调用结果。主机名或清单不符时保留原预期，报告差异；客户端只展示部分工具时标注清单待核实。
 
 交付时分别写明目标机安装结果与版本、监听地址和端口、控制端客户端与条目名、工具清单、机名是否匹配、沙箱状态，以及如何停止本次启动的前台进程（在对应窗口按 Ctrl+C）。若某一步失败，报告失败位置和实测结果；若仍需我登录或在新会话调用工具，注明待完成的具体动作。

@@ -69,7 +69,7 @@ def check_codex_entry(name: str, host: str, port: int) -> None:
             or url.username is not None or url.password is not None or url.query or url.fragment):
         die("client-config", "entry differs from the intended direct HTTP host or /mcp path")
     if actual_port != port:
-        die("client-config", f"configured port {actual_port}, deployment port {port}")
+        die("client-config", f"configured port {actual_port}, deployment port {port}; use repair_codex.py with the trusted deployment record to repair")
     ok("client-config", "enabled Codex entry matches the deployment endpoint")
 
 
